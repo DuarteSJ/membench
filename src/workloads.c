@@ -1,0 +1,197 @@
+/*
+ * Access-pattern primitives with deliberately distinct PMU signatures.
+ * See membench.h for the contract of each pattern. All three are driven in
+ * bounded chunks via a cursor so the phase scheduler can switch workloads at
+ * fine (sub-pass) granularity.
+ */
+
+#define _GNU_SOURCE
+
+#include "membench.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <assert.h>
+
+#ifdef MEMBENCH_NUMA
+#include <numa.h>
+#endif
+
+/* unroll for the high-MLP stream: how many independent misses we try to keep
+ * in flight per iteration. Push toward the core's LFB/MSHR limit (~10-16 on
+ * Skylake) for a stronger MLP signal. */
+#define MLP_UNROLL 8
+
+/* odd 64-bit constant (Fibonacci hashing): multiplying a counter by this mod
+ * 2^n is a bijection, so the stream visits every line exactly once per pass in
+ * a scattered order the prefetcher can't follow. */
+static const uint64_t MLP_MULT = 0x9E3779B97F4A7C15ULL;
+
+/* deterministic, full-width PRNG (xorshift64*) so chase rings are reproducible
+ * across runs given a seed. rand() tops out at RAND_MAX and can't index a
+ * multi-million-node region. */
+static uint64_t xs_state;
+static inline uint64_t xs_next(void)
+{
+    uint64_t x = xs_state;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    xs_state = x;
+    return x * 0x2545F4914F6CDD1DULL;
+}
+/* uniform in [0, bound) */
+static inline uint64_t xs_below(uint64_t bound)
+{
+    return xs_next() % bound;   /* modulo bias negligible at our scales */
+}
+
+/* ---- region lifecycle --------------------------------------------------- */
+
+int region_alloc(region_t *r, size_t bytes, int numa_node)
+{
+    void *p = NULL;
+    long pagesz = sysconf(_SC_PAGESIZE);
+
+    memset(r, 0, sizeof(*r));
+    if (bytes < CACHELINE)
+        return -1;
+
+    if (numa_node < 0) {
+        /* unbound: anonymous pages the kernel can place and migrate */
+        if (posix_memalign(&p, CACHELINE, bytes) != 0) {
+            fprintf(stderr, "region_alloc: posix_memalign(%zu) failed\n", bytes);
+            return -1;
+        }
+    } else {
+#ifdef MEMBENCH_NUMA
+        p = numa_alloc_onnode(bytes, numa_node);
+        if (!p) {
+            fprintf(stderr, "region_alloc: numa_alloc_onnode(node %d) failed\n",
+                    numa_node);
+            return -1;
+        }
+#else
+        fprintf(stderr, "region_alloc: NUMA pinning requested (node %d) but "
+                        "built without MEMBENCH_NUMA\n", numa_node);
+        return -1;
+#endif
+    }
+
+    /* first-touch every page so the mapping is fully populated before timing */
+    for (size_t off = 0; off < bytes; off += (size_t)pagesz)
+        ((volatile char *)p)[off] = 0;
+
+    r->buf = p;
+    r->size = bytes;
+    r->numa_node = numa_node;
+    r->nlines = bytes / CACHELINE;
+    return 0;
+}
+
+void region_free(region_t *r)
+{
+    if (!r->buf)
+        return;
+#ifdef MEMBENCH_NUMA
+    if (r->numa_node >= 0)
+        numa_free(r->buf, r->size);
+    else
+        free(r->buf);
+#else
+    free(r->buf);
+#endif
+    memset(r, 0, sizeof(*r));
+}
+
+void cursor_init(cursor_t *c, const region_t *r)
+{
+    c->cur = (const chase_node_t *)r->buf;
+    c->line = 0;
+    c->acc = 0;
+}
+
+/* ---- chase: dependent, low-MLP, latency-bound --------------------------- */
+
+void chase_build(region_t *r, uint64_t seed)
+{
+    size_t n = r->size / sizeof(chase_node_t);
+    chase_node_t *node = r->buf;
+    size_t *idx;
+    size_t i;
+
+    assert(n > 1);
+    xs_state = seed ? seed : 0x123456789ULL;
+
+    idx = malloc(n * sizeof(size_t));
+    if (!idx) {
+        fprintf(stderr, "chase_build: OOM building %zu-node permutation\n", n);
+        exit(1);
+    }
+    for (i = 0; i < n; i++)
+        idx[i] = i;
+
+    /* Sattolo's algorithm: produces a single-cycle permutation, so linking
+     * along it yields one Hamiltonian ring that visits every node per pass. */
+    for (i = n - 1; i > 0; i--) {
+        size_t j = xs_below(i);          /* strictly < i -> single cycle */
+        size_t t = idx[i]; idx[i] = idx[j]; idx[j] = t;
+    }
+    for (i = 0; i < n; i++)
+        node[idx[i]].next = &node[idx[(i + 1) % n]];
+
+    free(idx);
+}
+
+size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines)
+{
+    const chase_node_t *p = c->cur;
+    uint64_t acc = c->acc;
+    size_t i;
+
+    (void)r;
+    for (i = 0; i < lines; i++) {
+        acc += p->pad[0];      /* touch the line; dependency is via p = p->next */
+        p = p->next;
+    }
+    c->cur = p;
+    c->acc = acc;
+    return lines;
+}
+
+/* ---- stream_mlp: independent, high-MLP, BW-bound ------------------------ */
+
+size_t stream_mlp_chunk(const region_t *r, cursor_t *c, size_t lines)
+{
+    uint64_t *base = (uint64_t *)r->buf;
+    size_t nlines = r->nlines;
+    size_t mask = nlines - 1;
+    size_t elems_per_line = CACHELINE / sizeof(uint64_t);  /* 8 */
+    uint64_t acc[MLP_UNROLL];
+    size_t done = 0;
+    size_t k;
+
+    /* power-of-two line count is a precondition (validated in main): the masked
+     * multiply is only a bijection mod 2^n. */
+    assert(nlines && (nlines & mask) == 0);
+
+    for (k = 0; k < MLP_UNROLL; k++)
+        acc[k] = 0;
+
+    while (done + MLP_UNROLL <= lines) {
+        size_t u;
+        /* MLP_UNROLL independent loads: each target depends only on the line
+         * counter, never on loaded data, so the core overlaps the misses. */
+        for (u = 0; u < MLP_UNROLL; u++) {
+            size_t line = ((c->line + u) * MLP_MULT) & mask;
+            acc[u] += base[line * elems_per_line];
+        }
+        c->line += MLP_UNROLL;
+        done += MLP_UNROLL;
+    }
+    for (k = 0; k < MLP_UNROLL; k++)
+        c->acc += acc[k];
+    return done;
+}

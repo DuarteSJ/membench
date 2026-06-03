@@ -1,0 +1,12 @@
+# build artifacts
+src/*.o
+src/membench
+
+# results: keep the dir, ignore generated data
+results/*
+!results/.gitkeep
+
+# editor / python noise
+__pycache__/
+*.pyc
+.DS_Store
