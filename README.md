@@ -53,6 +53,11 @@ near-zero misses is nothing to rank against chase/mlp.)
    sudo scripts/characterize.sh           # DUR=5 REGION_MB=2048 THREADS=1 to taste
    ```
 
+   To fit the kernel's AOL parameters (`a`, `b`) on this box, see
+   [`calibrate/`](calibrate/README.md) — drives the **SOAR/ALTO microbench**
+   (pointer-chase + sequential, two points) on both NUMA tiers and prints the
+   scaled kernel `#define`s.
+
 2. **Weight swing (current AOL kernel)** - confirm the kernel's global
    `aol_weight` actually rises in a chase-only window and falls in an mlp-only
    window (watch the `htmm_aol:` printk). *Planned harness.*
