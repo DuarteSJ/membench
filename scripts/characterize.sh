@@ -134,19 +134,3 @@ if [[ -n "${MACC[chase]:-}" && -n "${MACC[mlp]:-}" ]]; then
         if (c>0) printf "\nmultiplier  k = mlp/chase accesses (equal wall-time) = %.2f\n", m/c
         else     print  "\nmultiplier  chase throughput is zero — check the run" }'
 fi
-
-cat <<'EOF'
-
-Read it like this:
-  * chase AOL should be >> mlp AOL (chase serialized, mlp overlapped) — this is
-    the per-access cost gap stock MEMTIS is blind to and AOL weighting exploits.
-  * aol_wt is the predicted kernel weight (AOL_SCALE=1024 = neutral) for a window
-    this pattern dominates — i.e. what `htmm_aol:` should print as weight=. The
-    chase/mlp aol_wt gap is the placement signal; saturation compresses it (high
-    AOL flattens K), so expect ~2-2.5x, not the raw AOL ratio.
-  * k = mlp/chase macc/s is the calibration multiplier: give the mlp region k x
-    chase's accesses so both finish together in fast tier. Then forcing either
-    to slow tier isolates placement quality (chase suffers far more — latency-
-    bound, no overlap to hide Optane latency).
-If chase~mlp on AOL, MLP_UNROLL is too low or the region fits in LLC.
-EOF
