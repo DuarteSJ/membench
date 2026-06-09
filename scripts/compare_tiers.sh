@@ -45,12 +45,12 @@ macc_of() { # $1=characterize-output  $2=pattern
 echo "mlp think-time: -D $DELAY"
 echo
 
-echo "### FAST tier — NUMA node $FAST_NODE"
+echo "### FAST tier (NUMA node $FAST_NODE)"
 fast_out="$(NODE="$FAST_NODE" "$CHAR")"
 echo "$fast_out"
 
 echo
-echo "### SLOW tier — NUMA node $SLOW_NODE"
+echo "### SLOW tier (NUMA node $SLOW_NODE)"
 slow_out="$(NODE="$SLOW_NODE" "$CHAR")"
 echo "$slow_out"
 
