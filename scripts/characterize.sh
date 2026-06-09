@@ -10,25 +10,23 @@
 #
 # Counters (raw encodings mirror linux/include/linux/htmm.h):
 #   A1   cpu/0xb1,0x01,cmask=1/  OFFCORE_REQUESTS_OUTSTANDING cycles w/ >=1 pending demand read
-#   A2   cpu/0xb1,0x01/          ...occupancy (sum of outstanding per cycle)
 #   A3   cpu/0xb0,0x01/          OFFCORE_REQUESTS demand data reads (count)
 #   llc  cpu/0xd1,0x20/          MEM_LOAD_RETIRED.L3_MISS (proxy for what MEMTIS samples)
 #   sllc cpu/0xa3,0x06,cmask=6/  CYCLE_ACTIVITY.STALLS_L3_MISS (cycles stalled on L3 miss)
 #   cyc  cycles                  CPU_CLK_UNHALTED
 #
-# (6 events > GP counters -> perf multiplexes; counts are scaled, expect ~80%.)
+# (4 GP events + cycles on the fixed counter -> no multiplexing, counts exact.)
 #
 # Derived:
 #   AOL = A1 / A3       (kernel's definition; ~avg exposed latency per request)
-#   MLP = A2 / A1       (avg outstanding reads while any are pending)
 #   P   = sllc / cyc    (stall fraction; the kernel's P)
 #   aol_wt = (1 + P*K)*1024 where K = AOL/(a + b/AOL), a=0.0625, b=1.28
 #           — the exact value the AOL kernel's `htmm_aol:` printk reports as
 #             weight= for a window dominated by this pattern. 1024 = neutral.
 #
 # Expected signatures:
-#   chase : HIGH AOL, MLP~1,  HIGH llc/s   (latency-bound)   -> MEMTIS sees hot
-#   mlp   : LOW  AOL, MLP>>1, HIGH llc/s   (bandwidth-bound) -> MEMTIS sees hot
+#   chase : HIGH AOL, HIGH llc/s   (latency-bound)   -> MEMTIS sees hot
+#   mlp   : LOW  AOL, HIGH llc/s   (bandwidth-bound) -> MEMTIS sees hot
 #
 # chase and mlp split on AOL (exposed latency per request): that gap is exactly
 # what AOL-weighted hotness exploits and stock MEMTIS, ranking by miss count
@@ -51,7 +49,7 @@ if [[ ! -x "$BIN" ]]; then
     exit 1
 fi
 
-EVENTS="cpu/event=0xb1,umask=0x01,cmask=0x01/,cpu/event=0xb1,umask=0x01/,cpu/event=0xb0,umask=0x01/,cpu/event=0xd1,umask=0x20/,cpu/event=0xa3,umask=0x06,cmask=0x06/,cycles"
+EVENTS="cpu/event=0xb1,umask=0x01,cmask=0x01/,cpu/event=0xb0,umask=0x01/,cpu/event=0xd1,umask=0x20/,cpu/event=0xa3,umask=0x06,cmask=0x06/,cycles"
 
 # perf -x, CSV columns: value,unit,event,runtime,pct,...  ; we key by event name.
 field() { # $1=csvfile $2=event-substring
@@ -63,13 +61,13 @@ field() { # $1=csvfile $2=event-substring
 declare -A MACC   # pattern -> maccess_per_s (for the k multiplier below)
 
 if [[ "$NODE" -lt 0 ]]; then tier="unbound / local DRAM (fast tier)";
-else                         tier="pinned to NUMA node $NODE (slow tier if PMEM)"; fi
+else                         tier="pinned to NUMA node $NODE"; fi
 printf 'region: %s MB, %s, %s threads, %ss each, mlp think-time -D %s\n\n' \
        "$REGION_MB" "$tier" "$THREADS" "$DUR" "$DELAY"
 
-printf "%-7s %12s %12s %12s %8s %6s %11s %9s %6s %8s\n" \
-       pattern A1 A2 A3 AOL MLP "llc_miss/s" "macc/s" P aol_wt
-printf '%.0s-' {1..96}; echo
+printf "%-7s %12s %12s %8s %11s %9s %6s %8s\n" \
+       pattern A1 A3 AOL "llc_miss/s" "macc/s" P aol_wt
+printf '%.0s-' {1..82}; echo
 
 for pat in $PATTERNS; do
     perf_csv="$(mktemp)"
@@ -95,7 +93,6 @@ for pat in $PATTERNS; do
     MACC[$pat]="$macc"
 
     a1="$(field "$perf_csv" 'event=0xb1,umask=0x01,cmask=0x01')"
-    a2="$(field "$perf_csv" 'event=0xb1,umask=0x01/')"
     a3="$(field "$perf_csv" 'event=0xb0,umask=0x01')"
     llc="$(field "$perf_csv" 'event=0xd1,umask=0x20')"
     sllc="$(field "$perf_csv" 'event=0xa3,umask=0x06,cmask=0x06')"
@@ -108,21 +105,20 @@ for pat in $PATTERNS; do
         continue
     fi
 
-    # AOL, MLP, llc/s, P, and the predicted aol_weight (kernel's fixed-point).
-    read -r aol mlp llcs p wt < <(awk \
-        -v a1="$a1" -v a2="$a2" -v a3="$a3" -v llc="${llc:-0}" \
+    # AOL, llc/s, P, and the predicted aol_weight (kernel's fixed-point).
+    read -r aol llcs p wt < <(awk \
+        -v a1="$a1" -v a3="$a3" -v llc="${llc:-0}" \
         -v sllc="${sllc:-0}" -v cyc="${cyc:-0}" -v d="$DUR" 'BEGIN{
             aol  = (a3>0 ? a1/a3 : 0);
-            mlp  = (a1>0 ? a2/a1 : 0);
             llcs = (d>0   ? llc/d : 0);
             p    = (cyc>0 ? sllc/cyc : 0);
             a=0.0625; b=1.28;
             k  = (aol>0 ? aol/(a*aol + b) : 0);
             wt = (1.0 + p*k) * 1024.0;     # kernel weight, AOL_SCALE fixed point
-            printf "%.2f %.2f %.3e %.3f %.0f", aol, mlp, llcs, p, wt }')
+            printf "%.2f %.3e %.3f %.0f", aol, llcs, p, wt }')
 
-    printf "%-7s %12s %12s %12s %8s %6s %11s %9s %6s %8s\n" \
-           "$pat" "$a1" "$a2" "$a3" "$aol" "$mlp" "$llcs" "$macc" "$p" "$wt"
+    printf "%-7s %12s %12s %8s %11s %9s %6s %8s\n" \
+           "$pat" "$a1" "$a3" "$aol" "$llcs" "$macc" "$p" "$wt"
     rm -f "$perf_csv" "$perf_csv.err" "$perf_csv.out"
 done
 

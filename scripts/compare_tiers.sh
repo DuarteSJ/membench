@@ -37,9 +37,9 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     echo "warn: not root — perf will likely report no counts. Re-run under sudo." >&2
 fi
 
-# macc/s is column 8 of a characterize data row ("<pat> A1 A2 A3 AOL MLP llc macc P wt").
+# macc/s is column 6 of a characterize data row ("<pat> A1 A3 AOL llc macc P wt").
 macc_of() { # $1=characterize-output  $2=pattern
-    awk -v p="$2" '$1==p {print $8; exit}' <<<"$1"
+    awk -v p="$2" '$1==p {print $6; exit}' <<<"$1"
 }
 
 echo "mlp think-time: -D $DELAY"
