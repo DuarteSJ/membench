@@ -14,6 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
+#include <immintrin.h>   /* _mm_pause for mlp think-time */
 
 #ifdef MEMBENCH_NUMA
 #include <numa.h>
@@ -111,6 +112,7 @@ void cursor_init(cursor_t *c, const region_t *r)
     c->cur = (const chase_node_t *)r->buf;
     c->line = 0;
     c->acc = 0;
+    c->delay = 0;   /* caller sets the mlp think-time after init */
 }
 
 /* ---- chase: dependent, low-MLP, latency-bound --------------------------- */
@@ -193,5 +195,12 @@ size_t stream_mlp_chunk(const region_t *r, cursor_t *c, size_t lines)
     }
     for (k = 0; k < MLP_UNROLL; k++)
         c->acc += acc[k];
+
+    /* think-time: throttle the access cadence WITHOUT descheduling (sleep would
+     * free the core and cut traffic coarsely). Busy _mm_pause keeps the thread
+     * on its core, just slows mlp so it stops saturating tier bandwidth */
+    for (uint64_t d = 0; d < c->delay; d++)
+        _mm_pause();
+
     return done;
 }

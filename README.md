@@ -30,6 +30,10 @@ point.
   is `(counter * MULT) & (nlines-1)`; that masked multiply is a full bijection
   (every line once, scattered) **only when `nlines` is a power of two**, so the
   region size must be a power of two — `-L` non-pow2 is a hard error, no fallback.
+  `-D <n>` adds **think-time** (busy-`pause` between chunks): throttles mlp's
+  access cadence so it stops saturating the slow tier's bandwidth, turning it
+  into a **high-miss but low-value** region — exactly the page stock MEMTIS
+  over-promotes and AOL down-weights. mlp-only; `chase` ignores `-D`.
 
 (No `seq` control: a prefetch-friendly linear read MEMTIS already filters to
 near-zero misses is nothing to rank against chase/mlp.)
@@ -72,7 +76,14 @@ Used as the body of tier 1.
 
 `-L` (region MB) must be a power of two for `mlp` (bijection requirement above).
 
+`-D <n>` is mlp-only think-time: `n` busy-`_mm_pause` iterations per ~1 MiB
+chunk, throttling cadence *without descheduling*. Sweep it (watch `gib_per_s`)
+to drop mlp's bandwidth below the slow-tier ceiling while keeping its LLC-miss
+count above `chase`. `n` is a spin count, not a time unit. Needs per machine
+re-sweep (PAUSE latency varies). `chase` ignores it.
+
 ```sh
-./src/membench -p chase -L 2048 -s 10 -t 1 -c 0      # unbound region
-./src/membench -p mlp   -L 2048 -s 10 -t 4 -c 0 -X 0 # 4 threads, pinned node 0 (needs NUMA=1)
+./src/membench -p chase -L 2048 -s 10 -t 1 -c 0          # unbound region
+./src/membench -p mlp   -L 2048 -s 10 -t 4 -c 0 -X 0     # 4 threads, pinned node 0 (needs NUMA=1)
+./src/membench -p mlp   -L 2048 -s 10 -t 1 -c 0 -D 2000  # throttled mlp (think-time)
 ```

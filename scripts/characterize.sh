@@ -44,6 +44,7 @@ THREADS="${THREADS:-1}"
 CORE0="${CORE0:-0}"
 PATTERNS="${PATTERNS:-chase mlp}"
 NODE="${NODE:--1}"
+DELAY="${DELAY:-0}"
 
 if [[ ! -x "$BIN" ]]; then
     echo "membench binary not found at $BIN (run 'make -C $HERE/src')" >&2
@@ -63,8 +64,8 @@ declare -A MACC   # pattern -> maccess_per_s (for the k multiplier below)
 
 if [[ "$NODE" -lt 0 ]]; then tier="unbound / local DRAM (fast tier)";
 else                         tier="pinned to NUMA node $NODE (slow tier if PMEM)"; fi
-printf 'region: %s MB, %s, %s threads, %ss each\n\n' \
-       "$REGION_MB" "$tier" "$THREADS" "$DUR"
+printf 'region: %s MB, %s, %s threads, %ss each, mlp think-time -D %s\n\n' \
+       "$REGION_MB" "$tier" "$THREADS" "$DUR" "$DELAY"
 
 printf "%-7s %12s %12s %12s %8s %6s %11s %9s %6s %8s\n" \
        pattern A1 A2 A3 AOL MLP "llc_miss/s" "macc/s" P aol_wt
@@ -75,7 +76,7 @@ for pat in $PATTERNS; do
     perf stat -x, -o "$perf_csv" \
         -e "$EVENTS" \
         -- "$BIN" -p "$pat" -L "$REGION_MB" -s "$DUR" -t "$THREADS" -c "$CORE0" \
-                  -X "$NODE" \
+                  -X "$NODE" -D "$DELAY" \
         >"$perf_csv.out" 2>"$perf_csv.err"
 
     # membench prints one CSV line on stdout. Missing => it never ran (NUMA

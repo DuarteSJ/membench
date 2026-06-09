@@ -39,6 +39,7 @@ typedef struct {
     const chase_node_t *cur;  /* chase position */
     size_t   line;            /* stream line counter */
     uint64_t acc;             /* sink: defeats dead-code elimination */
+    uint64_t delay;           /* mlp think-time: busy-pause iters per chunk (0=off) */
 } cursor_t;
 
 /* ---- access patterns ---------------------------------------------------- */

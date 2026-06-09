@@ -5,15 +5,20 @@
 #
 # This is the cross-tier view characterize can't give on its own (it probes one
 # node per run). chase, being latency-bound, should slow more than mlp on a true
-# slow tier — though note the isolated-loop caveat: both scale ~1/L, so the gap
-# is small until a criticality-sensitive workload is used.
+# slow tier — BUT at full intensity mlp saturates slow-tier bandwidth and slows
+# just as much, hiding the gap. Throttle mlp with DELAY (membench -D think-time,
+# mlp-only): drop its bandwidth below the slow-tier ceiling and its slowdown
+# falls below chase's, exposing the latency-vs-bandwidth split this suite tests.
 #
-# Needs root (perf). Pass node overrides before the command so they survive sudo:
+# Needs root (perf). Pass overrides before the command so they survive sudo:
 #   sudo FAST_NODE=0 SLOW_NODE=2 scripts/compare_tiers.sh
-# Tunables (DUR, REGION_MB, THREADS, CORE0, PATTERNS) are read by characterize.
+#   sudo DELAY=2000 scripts/compare_tiers.sh             # throttle mlp
+# Tunables (DUR, REGION_MB, THREADS, CORE0, PATTERNS, DELAY) pass through to
+# characterize via the environment.
 #
 #   FAST_NODE  DRAM node for the fast-tier run            (default 0)
 #   SLOW_NODE  PMEM / slow node (numactl -H: cpuless mem) (default 2)
+#   DELAY      mlp busy-pause iters/chunk (chase ignores) (default 0)
 
 set -u
 
@@ -22,6 +27,7 @@ CHAR="$HERE/characterize.sh"
 FAST_NODE="${FAST_NODE:-0}"
 SLOW_NODE="${SLOW_NODE:-2}"
 PATTERNS="${PATTERNS:-chase mlp}"
+DELAY="${DELAY:-0}"; export DELAY   # mlp think-time, forwarded to characterize
 
 if [[ ! -x "$CHAR" ]]; then
     echo "characterize.sh not found/executable at $CHAR" >&2
@@ -35,6 +41,9 @@ fi
 macc_of() { # $1=characterize-output  $2=pattern
     awk -v p="$2" '$1==p {print $8; exit}' <<<"$1"
 }
+
+echo "mlp think-time: -D $DELAY"
+echo
 
 echo "### FAST tier — NUMA node $FAST_NODE"
 fast_out="$(NODE="$FAST_NODE" "$CHAR")"

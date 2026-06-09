@@ -39,6 +39,7 @@ struct worker {
     chunk_fn        fn;
     volatile int   *stop;
     pthread_barrier_t *start;
+    uint64_t        delay;   /* mlp think-time, passed to the cursor */
     uint64_t        lines;   /* out: lines this worker processed */
     uint64_t        sink;    /* out: accumulator, kept live so loads aren't DCE'd */
 };
@@ -68,6 +69,7 @@ static void *worker_main(void *arg)
                 w->core, strerror(errno));
 
     cursor_init(&c, w->region);
+    c.delay = w->delay;        /* mlp reads this; chase_chunk ignores it */
     pthread_barrier_wait(w->start);
 
     while (!*w->stop)
@@ -97,10 +99,11 @@ static void usage(const char *p)
         "  -c <core0>          first core to pin to      (default 0)\n"
         "  -X <node>           NUMA node, <0 = unbound   (default -1)\n"
         "  -S <seed>           chase ring RNG seed       (default 1)\n"
+        "  -D <n>              mlp think-time: busy-pause iters/chunk (default 0)\n"
         "\n"
         "Emits one machine-readable line on stdout:\n"
         "  membench,mode=single,pattern=<p>,region_mb=<L>,threads=<t>,"
-        "sec=<elapsed>,accesses=<n>,maccess_per_s=<r>,gib_per_s=<bw>\n",
+        "sec=<elapsed>,accesses=<n>,maccess_per_s=<r>,gib_per_s=<bw>,delay=<D>\n",
         p);
 }
 
@@ -110,10 +113,10 @@ int main(int argc, char **argv)
     size_t region_mb = 2048;
     double secs = 10.0;
     int threads = 1, core0 = 0, node = -1;
-    uint64_t seed = 1;
+    uint64_t seed = 1, delay = 0;
     int opt;
 
-    while ((opt = getopt(argc, argv, "p:L:s:t:c:X:S:h")) != -1) {
+    while ((opt = getopt(argc, argv, "p:L:s:t:c:X:S:D:h")) != -1) {
         switch (opt) {
         case 'p': pattern = optarg; break;
         case 'L': region_mb = strtoull(optarg, NULL, 10); break;
@@ -122,6 +125,7 @@ int main(int argc, char **argv)
         case 'c': core0 = atoi(optarg); break;
         case 'X': node = atoi(optarg); break;
         case 'S': seed = strtoull(optarg, NULL, 10); break;
+        case 'D': delay = strtoull(optarg, NULL, 10); break;
         case 'h': default: usage(argv[0]); return opt == 'h' ? 0 : 2;
         }
     }
@@ -160,6 +164,7 @@ int main(int argc, char **argv)
         ws[i].fn = fn;
         ws[i].stop = &stop;
         ws[i].start = &start;
+        ws[i].delay = (fn == stream_mlp_chunk) ? delay : 0;
         if (pthread_create(&ws[i].th, NULL, worker_main, &ws[i]) != 0) {
             fprintf(stderr, "pthread_create worker %d failed\n", i);
             return 1;
@@ -186,9 +191,10 @@ int main(int argc, char **argv)
     double gib_per_s = accesses * CACHELINE / elapsed / (double)(1ULL << 30);
 
     printf("membench,mode=single,pattern=%s,region_mb=%zu,threads=%d,"
-           "sec=%.3f,accesses=%.0f,maccess_per_s=%.2f,gib_per_s=%.3f\n",
+           "sec=%.3f,accesses=%.0f,maccess_per_s=%.2f,gib_per_s=%.3f,delay=%llu\n",
            pattern, region_mb, threads, elapsed, accesses,
-           maccess_per_s, gib_per_s);
+           maccess_per_s, gib_per_s,
+           (unsigned long long)(fn == stream_mlp_chunk ? delay : 0));
     fprintf(stderr, "  sink=%llu (ignore)\n", (unsigned long long)sink);
 
     free(ws);
