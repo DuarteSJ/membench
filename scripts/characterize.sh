@@ -26,9 +26,9 @@
 #
 # Expected signatures:
 #   chase : HIGH AOL, HIGH llc/s   (latency-bound)   -> MEMTIS sees hot
-#   mlp   : LOW  AOL, HIGH llc/s   (bandwidth-bound) -> MEMTIS sees hot
+#   scatter   : LOW  AOL, HIGH llc/s   (bandwidth-bound) -> MEMTIS sees hot
 #
-# chase and mlp split on AOL (exposed latency per request): that gap is exactly
+# chase and scatter split on AOL (exposed latency per request): that gap is exactly
 # what AOL-weighted hotness exploits and stock MEMTIS, ranking by miss count
 # alone, cannot. macc/s yields k, the equal-wall-time calibration multiplier.
 
@@ -40,7 +40,7 @@ DUR="${DUR:-5}"
 REGION_MB="${REGION_MB:-2048}"
 THREADS="${THREADS:-1}"
 CORE0="${CORE0:-0}"
-PATTERNS="${PATTERNS:-chase mlp}"
+PATTERNS="${PATTERNS:-chase scatter}"
 NODE="${NODE:--1}"
 DELAY="${DELAY:-0}"
 
@@ -62,7 +62,7 @@ declare -A MACC   # pattern -> maccess_per_s (for the k multiplier below)
 
 if [[ "$NODE" -lt 0 ]]; then tier="unbound / local DRAM (fast tier)";
 else                         tier="pinned to NUMA node $NODE"; fi
-printf 'region: %s MB, %s, %s threads, %ss each, mlp think-time -D %s\n\n' \
+printf 'region: %s MB, %s, %s threads, %ss each, scatter think-time -D %s\n\n' \
        "$REGION_MB" "$tier" "$THREADS" "$DUR" "$DELAY"
 
 printf "%-7s %12s %12s %8s %11s %9s %6s %8s\n" \
@@ -122,11 +122,12 @@ for pat in $PATTERNS; do
     rm -f "$perf_csv" "$perf_csv.err" "$perf_csv.out"
 done
 
-# k = how many more accesses mlp lands per unit time than chase, in fast tier.
-# Size the co-run regions so mlp does k x chase's accesses -> both take the same
-# wall-time when fully DRAM-resident. Re-measure on the target box.
-if [[ -n "${MACC[chase]:-}" && -n "${MACC[mlp]:-}" ]]; then
-    awk -v c="${MACC[chase]}" -v m="${MACC[mlp]}" 'BEGIN{
-        if (c>0) printf "\nmultiplier  k = mlp/chase accesses (equal wall-time) = %.2f\n", m/c
+# k = scatter/chase throughput in the fast tier. corun regions are equal size
+# (-L), so one pass = nlines accesses for both; equal fast-tier time needs
+# scatter to run k x chase's passes -> start the corun sweep at -M = k*-N, then
+# fine-tune -N/-M/-D. Re-measure on the target box.
+if [[ -n "${MACC[chase]:-}" && -n "${MACC[scatter]:-}" ]]; then
+    awk -v c="${MACC[chase]}" -v m="${MACC[scatter]}" 'BEGIN{
+        if (c>0) printf "\nmultiplier  k = scatter/chase throughput = %.2f  (corun: -M ~= k*-N)\n", m/c
         else     print  "\nmultiplier  chase throughput is zero — check the run" }'
 fi

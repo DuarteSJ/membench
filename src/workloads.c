@@ -1,8 +1,8 @@
 /*
  * Access-pattern primitives with deliberately distinct PMU signatures.
- * See membench.h for the contract of each pattern. All three are driven in
- * bounded chunks via a cursor so the phase scheduler can switch workloads at
- * fine (sub-pass) granularity.
+ * See membench.h for the contract of each pattern. Both are driven in bounded
+ * chunks via a cursor so the worker loop re-checks its stop flag / work target
+ * often (a full pass over a multi-GB region is far too coarse for that).
  */
 
 #define _GNU_SOURCE
@@ -14,21 +14,21 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
-#include <immintrin.h>   /* _mm_pause for mlp think-time */
+#include <immintrin.h>   /* _mm_pause for scatter think-time */
 
 #ifdef MEMBENCH_NUMA
 #include <numa.h>
 #endif
 
-/* unroll for the high-MLP stream: how many independent misses we try to keep
+/* unroll for the scatter stream: how many independent misses we try to keep
  * in flight per iteration. Push toward the core's LFB/MSHR limit (~10-16 on
  * Skylake) for a stronger MLP signal. */
-#define MLP_UNROLL 8
+#define SCATTER_UNROLL 8
 
 /* odd 64-bit constant (Fibonacci hashing): multiplying a counter by this mod
  * 2^n is a bijection, so the stream visits every line exactly once per pass in
  * a scattered order the prefetcher can't follow. */
-static const uint64_t MLP_MULT = 0x9E3779B97F4A7C15ULL;
+static const uint64_t SCATTER_MULT = 0x9E3779B97F4A7C15ULL;
 
 /* deterministic, full-width PRNG (xorshift64*) so chase rings are reproducible
  * across runs given a seed. rand() tops out at RAND_MAX and can't index a
@@ -112,7 +112,7 @@ void cursor_init(cursor_t *c, const region_t *r)
     c->cur = (const chase_node_t *)r->buf;
     c->line = 0;
     c->acc = 0;
-    c->delay = 0;   /* caller sets the mlp think-time after init */
+    c->delay = 0;   /* caller sets the scatter think-time after init */
 }
 
 /* ---- chase: dependent, low-MLP, latency-bound --------------------------- */
@@ -163,15 +163,15 @@ size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines)
     return lines;
 }
 
-/* ---- stream_mlp: independent, high-MLP, BW-bound ------------------------ */
+/* ---- scatter: independent, high-MLP, BW-bound --------------------------- */
 
-size_t stream_mlp_chunk(const region_t *r, cursor_t *c, size_t lines)
+size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
 {
     uint64_t *base = (uint64_t *)r->buf;
     size_t nlines = r->nlines;
     size_t mask = nlines - 1;
     size_t elems_per_line = CACHELINE / sizeof(uint64_t);  /* 8 */
-    uint64_t acc[MLP_UNROLL];
+    uint64_t acc[SCATTER_UNROLL];
     size_t done = 0;
     size_t k;
 
@@ -179,26 +179,26 @@ size_t stream_mlp_chunk(const region_t *r, cursor_t *c, size_t lines)
      * multiply is only a bijection mod 2^n. */
     assert(nlines && (nlines & mask) == 0);
 
-    for (k = 0; k < MLP_UNROLL; k++)
+    for (k = 0; k < SCATTER_UNROLL; k++)
         acc[k] = 0;
 
-    while (done + MLP_UNROLL <= lines) {
+    while (done + SCATTER_UNROLL <= lines) {
         size_t u;
-        /* MLP_UNROLL independent loads: each target depends only on the line
+        /* SCATTER_UNROLL independent loads: each target depends only on the line
          * counter, never on loaded data, so the core overlaps the misses. */
-        for (u = 0; u < MLP_UNROLL; u++) {
-            size_t line = ((c->line + u) * MLP_MULT) & mask;
+        for (u = 0; u < SCATTER_UNROLL; u++) {
+            size_t line = ((c->line + u) * SCATTER_MULT) & mask;
             acc[u] += base[line * elems_per_line];
         }
-        c->line += MLP_UNROLL;
-        done += MLP_UNROLL;
+        c->line += SCATTER_UNROLL;
+        done += SCATTER_UNROLL;
     }
-    for (k = 0; k < MLP_UNROLL; k++)
+    for (k = 0; k < SCATTER_UNROLL; k++)
         c->acc += acc[k];
 
     /* think-time: throttle the access cadence WITHOUT descheduling (sleep would
      * free the core and cut traffic coarsely). Busy _mm_pause keeps the thread
-     * on its core, just slows mlp so it stops saturating tier bandwidth */
+     * on its core, just slows scatter so it stops saturating tier bandwidth */
     for (uint64_t d = 0; d < c->delay; d++)
         _mm_pause();
 

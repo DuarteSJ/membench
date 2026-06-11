@@ -9,8 +9,8 @@
 /*
  * A region is one contiguous, page-aligned buffer plus the metadata needed to
  * drive an access pattern over it. Regions persist for the whole run so the
- * kernel's tiering logic (MEMTIS) can accumulate per-page hotness and migrate
- * them; only the *active access pattern* changes between phases.
+ * kernel's tiering logic (in our case, MEMTIS) can accumulate per-page hotness
+ * and migrate them.
  *
  *   numa_node < 0  -> unbound: plain anonymous pages, first-touched. The kernel
  *                     places them and MEMTIS is free to migrate between tiers.
@@ -31,15 +31,15 @@ typedef struct chase_node {
 } chase_node_t;
 
 /*
- * Iterator state so a pattern can be driven in bounded chunks (the phase
- * scheduler flips workloads between chunks; a full pass over a multi-GB region
- * is far too coarse a granularity to honour a phase boundary).
+ * Iterator state so a pattern can be driven in bounded chunks: the worker loop
+ * re-checks its stop flag / work target between chunks (a full pass over a
+ * multi-GB region is far too coarse a granularity for that).
  */
 typedef struct {
     const chase_node_t *cur;  /* chase position */
     size_t   line;            /* stream line counter */
     uint64_t acc;             /* sink: defeats dead-code elimination */
-    uint64_t delay;           /* mlp think-time: busy-pause iters per chunk (0=off) */
+    uint64_t delay;           /* scatter think-time: busy-pause iters per chunk (0=off) */
 } cursor_t;
 
 /* ---- access patterns ---------------------------------------------------- */
@@ -53,14 +53,14 @@ void chase_build(region_t *r, uint64_t seed);
 size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines);
 
 /*
- * stream_mlp: scattered, prefetcher-defeating, but data-INDEPENDENT reads
+ * scatter: scattered, prefetcher-defeating, but data-INDEPENDENT reads
  * (Fibonacci-hash index computed from a counter, not from loaded data). The
  * OOO core keeps many misses outstanding -> high MLP, latency hidden.
  * PMU signature: high LLC-miss rate (like chase), LOW AOL, high MLP. BW-bound.
  * Requires nlines to be a power of two (odd multiplier mod 2^n is a bijection).
  * Caller must validate this; the chunk loop assumes it.
  */
-size_t stream_mlp_chunk(const region_t *r, cursor_t *c, size_t lines);
+size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines);
 
 /* ---- region lifecycle --------------------------------------------------- */
 
