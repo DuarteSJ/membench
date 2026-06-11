@@ -39,6 +39,12 @@ def build_scenarios(a):
     corun = ["sudo", str(BIN), "-m", "corun",
              "-L", str(a.region), "-N", str(a.chase), "-M", str(a.scatter),
              "-D", str(a.delay), "-c", str(a.core)]
+
+    def managed(alloc):
+        return ["sudo", str(MANAGED), "-d", str(a.cap), "-L", str(a.region),
+                "-N", str(a.chase), "-M", str(a.scatter), "-D", str(a.delay),
+                "-c", str(a.core), "-f", str(a.fast), "-O", alloc]
+
     return [
         ("all_on_fast\n",
          corun + ["-A", str(a.fast), "-B", str(a.fast)]),
@@ -48,10 +54,8 @@ def build_scenarios(a):
          corun + ["-A", str(a.slow), "-B", str(a.fast)]),
         ("hot_on_slow\n",
          corun + ["-A", str(a.fast), "-B", str(a.slow)]),
-        ("MEMTIS_managed\n",
-         ["sudo", str(MANAGED), "-d", str(a.cap), "-L", str(a.region),
-          "-N", str(a.chase), "-M", str(a.scatter), "-D", str(a.delay),
-          "-c", str(a.core), "-f", str(a.fast)]),
+        ("MEMTIS_managed\nalloc=chase", managed("chase")),
+        ("MEMTIS_managed\nalloc=scatter", managed("scatter")),
     ]
 
 
@@ -75,8 +79,9 @@ def makespan_of(label, argv):
 
 def plot(labels, values, out_path):
     # one colour per scenario, in build_scenarios order:
-    # all_fast(green) all_slow(red) hot_on_slow(blue) hot_on_fast(gray) managed(orange)
-    palette = ["#2ca02c", "#d62728", "#1f77b4", "#7f7f7f", "#ff7f0e"]
+    # all_fast(green) all_slow(grey) hot_on_fast(red) hot_on_slow(blue)
+    # managed-chase(orange) managed-scatter(purple)
+    palette = ["#2ca02c", "#7f7f7f", "#d62728", "#1f77b4", "#ff7f0e", "#9467bd"]
     colors = (palette * ((len(values) // len(palette)) + 1))[: len(values)]
     fig, ax = plt.subplots(figsize=(9, 5))
     bars = ax.bar(labels, values, color=colors)
@@ -100,11 +105,14 @@ def main():
                    help="scale both -N and -M by this (keeps their ratio; longer runs)")
     p.add_argument("-D", "--delay", type=int, default=8000, help="scatter think-time")
     p.add_argument("-c", "--core", type=int, default=0, help="first core")
-    p.add_argument("-d", "--cap", type=int, default=2048, help="managed DRAM cap MB")
+    p.add_argument("-d", "--cap", type=int, default=None,
+                   help="managed DRAM cap MB (default: equal to -L)")
     p.add_argument("--fast", type=int, default=0, help="fast node")
     p.add_argument("--slow", type=int, default=2, help="slow node")
     p.add_argument("-o", "--out", default=str(HERE / "makespan.png"), help="output PNG")
     a = p.parse_args()
+    if a.cap is None:           # cap follows region size unless set explicitly
+        a.cap = a.region
     a.chase *= a.mult           # scale work up/down, keeping the N:M ratio
     a.scatter *= a.mult
 
