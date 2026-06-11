@@ -193,8 +193,8 @@ static void usage(const char *p)
         "  -X <node>           NUMA node, <0 = unbound   (default -1)\n"
         "\n"
         " corun mode (fixed work; chase on core0, scatter on core0+1):\n"
-        "  -N <passes>         chase work (1 pass = full region traversal) (default 20)\n"
-        "  -M <passes>         scatter work (1 pass = full region traversal) (default 20)\n"
+        "  -N <passes>         chase work, fractional ok (1 pass = full traversal) (default 20)\n"
+        "  -M <passes>         scatter work, fractional ok (1 pass = full traversal) (default 20)\n"
         "  -A <node>           chase region node, <0 unbound (default -1)\n"
         "  -B <node>           scatter region node, <0 unbound (default -1)\n"
         "  (both unbound = let MEMTIS place/migrate; -A 0 -B 2 = one per tier)\n"
@@ -263,8 +263,8 @@ static int run_single(const char *pattern, size_t region_mb, double secs,
 }
 
 static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_node,
-                     uint64_t seed, uint64_t delay, uint64_t chase_passes,
-                     uint64_t scatter_passes)
+                     uint64_t seed, uint64_t delay, double chase_passes,
+                     double scatter_passes)
 {
     region_t chreg, screg;
     if (setup_region(&chreg, chase_chunk, region_mb, chase_node, seed) != 0)
@@ -275,20 +275,20 @@ static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_no
     }
 
     fprintf(stderr, "membench corun: region=%zuMB  "
-                    "chase(node=%d core=%d passes=%llu)  "
-                    "scatter(node=%d core=%d passes=%llu D=%llu)\n",
-            region_mb, chase_node, core0, (unsigned long long)chase_passes,
-            scatter_node, core0 + 1, (unsigned long long)scatter_passes,
+                    "chase(node=%d core=%d passes=%g)  "
+                    "scatter(node=%d core=%d passes=%g D=%llu)\n",
+            region_mb, chase_node, core0, chase_passes,
+            scatter_node, core0 + 1, scatter_passes,
             (unsigned long long)delay);
 
     struct worker ws[2];
     memset(ws, 0, sizeof(ws));
     ws[0].core = core0;     ws[0].node = chase_node; ws[0].role = "chase";
     ws[0].region = &chreg;  ws[0].fn = chase_chunk;       ws[0].delay = 0;
-    ws[0].target = chase_passes * chreg.nlines;
+    ws[0].target = (uint64_t)(chase_passes * chreg.nlines + 0.5);
     ws[1].core = core0 + 1; ws[1].node = scatter_node;   ws[1].role = "scatter";
     ws[1].region = &screg; ws[1].fn = scatter_chunk;  ws[1].delay = delay;
-    ws[1].target = scatter_passes * screg.nlines;
+    ws[1].target = (uint64_t)(scatter_passes * screg.nlines + 0.5);
 
     if (run_workers(ws, 2, 0) != 0) {     /* secs=0 -> fixed-work termination */
         region_free(&chreg); region_free(&screg); return 1;
@@ -316,7 +316,7 @@ int main(int argc, char **argv)
     int threads = 1, core0 = 0, node = -1;
     int chase_node = -1, scatter_node = -1;
     uint64_t seed = 1, delay = 0;
-    uint64_t chase_passes = 20, scatter_passes = 20;
+    double chase_passes = 20, scatter_passes = 20;
     int opt;
 
     while ((opt = getopt(argc, argv, "m:p:L:s:t:c:X:S:D:A:B:N:M:h")) != -1) {
@@ -332,8 +332,8 @@ int main(int argc, char **argv)
         case 'D': delay = strtoull(optarg, NULL, 10); break;
         case 'A': chase_node = atoi(optarg); break;
         case 'B': scatter_node = atoi(optarg); break;
-        case 'N': chase_passes = strtoull(optarg, NULL, 10); break;
-        case 'M': scatter_passes = strtoull(optarg, NULL, 10); break;
+        case 'N': chase_passes = strtod(optarg, NULL); break;
+        case 'M': scatter_passes = strtod(optarg, NULL); break;
         case 'h': default: usage(argv[0]); return opt == 'h' ? 0 : 2;
         }
     }

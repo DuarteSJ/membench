@@ -37,13 +37,13 @@ def build_scenarios(a):
              "-L", str(a.region), "-N", str(a.chase), "-M", str(a.scatter),
              "-D", str(a.delay), "-c", str(a.core)]
     return [
-        ("hot_on_slow\n(AOL-correct)",
+        ("hot_on_slow\n",
          corun + ["-A", str(a.fast), "-B", str(a.slow)]),
-        ("MEMTIS_managed\n(kernel chooses)",
+        ("MEMTIS_managed\n",
          ["sudo", str(MANAGED), "-d", str(a.cap), "-L", str(a.region),
           "-N", str(a.chase), "-M", str(a.scatter), "-D", str(a.delay),
           "-c", str(a.core), "-f", str(a.fast)]),
-        ("hot_on_fast\n(MEMTIS's pick)",
+        ("hot_on_fast\n",
          corun + ["-A", str(a.slow), "-B", str(a.fast)]),
     ]
 
