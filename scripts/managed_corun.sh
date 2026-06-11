@@ -20,6 +20,7 @@
 #     -D <n>    scatter think-time              (default 8000)
 #     -f <node> fast / DRAM node to cap         (default 0)
 #     -c <core> first core (chase=core, scatter=core+1)  (default 0)
+#     -O <chase|scatter> which region to alloc first     (default chase)
 #
 # Lock -N/-M/-D to the values you calibrated in the both-fast run first.
 
@@ -38,8 +39,9 @@ SCATTER_PASSES=5
 DELAY=8000
 FAST_NODE=0
 CORE0=0
+ALLOC_FIRST=chase
 
-while getopts "d:L:N:M:D:f:c:h" o; do
+while getopts "d:L:N:M:D:f:c:O:h" o; do
     case "$o" in
         d) DRAM_MB="$OPTARG" ;;
         L) REGION_MB="$OPTARG" ;;
@@ -48,6 +50,7 @@ while getopts "d:L:N:M:D:f:c:h" o; do
         D) DELAY="$OPTARG" ;;
         f) FAST_NODE="$OPTARG" ;;
         c) CORE0="$OPTARG" ;;
+        O) ALLOC_FIRST="$OPTARG" ;;
         h) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) exit 2 ;;
     esac
@@ -108,7 +111,7 @@ trap cg_teardown EXIT
 # ---------------------------------------------------------------------------
 echo "== MEMTIS-managed corun =="
 echo "DRAM cap node$FAST_NODE: ${DRAM_MB}MB   working set: $((2 * REGION_MB))MB (2x ${REGION_MB})"
-echo "chase passes=$CHASE_PASSES   scatter passes=$SCATTER_PASSES   D=$DELAY   core0=$CORE0"
+echo "chase passes=$CHASE_PASSES   scatter passes=$SCATTER_PASSES   D=$DELAY   core0=$CORE0   alloc=$ALLOC_FIRST-first"
 echo
 
 htmm_setting
@@ -124,7 +127,8 @@ grep -e htmm -e pgmig /proc/vmstat > /tmp/managed_corun.vmstat.before 2>/dev/nul
 echo $$ > "$CG/cgroup.procs"
 
 "$BIN" -m corun -L "$REGION_MB" -A -1 -B -1 \
-       -N "$CHASE_PASSES" -M "$SCATTER_PASSES" -D "$DELAY" -c "$CORE0"
+       -N "$CHASE_PASSES" -M "$SCATTER_PASSES" -D "$DELAY" -c "$CORE0" \
+       -O "$ALLOC_FIRST"
 rc=$?
 
 # move our shell back to root so the cgroup can be reused/removed later
