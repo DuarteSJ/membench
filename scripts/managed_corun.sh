@@ -135,11 +135,12 @@ rc=$?
 echo $$ > "$CG_DIR/cgroup.procs" 2>/dev/null || true
 
 echo
-echo "---- htmm / migration counters (delta) ----"
+printf "---- htmm / migration counters ----\n%-28s %14s %14s %14s\n" \
+       counter before after delta
 grep -e htmm -e pgmig /proc/vmstat > /tmp/managed_corun.vmstat.after 2>/dev/null || true
 if [[ -s /tmp/managed_corun.vmstat.before ]]; then
     join /tmp/managed_corun.vmstat.before /tmp/managed_corun.vmstat.after 2>/dev/null \
-        | awk '$2!=$3 {printf "  %-28s %s -> %s\n", $1, $2, $3}'
+        | awk '{printf "%-28s %14s %14s %+14d\n", $1, $2, $3, $3-$2}'
 fi
 echo
 echo "(weight printks: sudo dmesg | grep htmm_aol)"
