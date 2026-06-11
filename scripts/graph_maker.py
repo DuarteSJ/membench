@@ -84,8 +84,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-L", "--region", type=int, default=2048, help="region MB per workload")
-    p.add_argument("-N", "--chase", type=int, default=2, help="chase passes")
-    p.add_argument("-M", "--scatter", type=int, default=10, help="scatter passes")
+    p.add_argument("-N", "--chase", type=int, default=0.9, help="chase passes")
+    p.add_argument("-M", "--scatter", type=int, default=1.5146, help="scatter passes")
     p.add_argument("-D", "--delay", type=int, default=8000, help="scatter think-time")
     p.add_argument("-c", "--core", type=int, default=0, help="first core")
     p.add_argument("-d", "--cap", type=int, default=2048, help="managed DRAM cap MB")
