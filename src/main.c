@@ -290,6 +290,16 @@ static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_no
     ws[1].region = &screg; ws[1].fn = scatter_chunk;  ws[1].delay = delay;
     ws[1].target = (uint64_t)(scatter_passes * screg.nlines + 0.5);
 
+    /* target==0 would drop the worker into the timed loop, which in corun has no
+     * deadline -> infinite spin. Reject before that can happen. */
+    if (ws[0].target == 0 || ws[1].target == 0) {
+        fprintf(stderr, "corun: passes too small — target rounds to 0 lines "
+                        "(chase=%llu scatter=%llu). Raise -N/-M.\n",
+                (unsigned long long)ws[0].target,
+                (unsigned long long)ws[1].target);
+        region_free(&chreg); region_free(&screg); return 1;
+    }
+
     if (run_workers(ws, 2, 0) != 0) {     /* secs=0 -> fixed-work termination */
         region_free(&chreg); region_free(&screg); return 1;
     }
