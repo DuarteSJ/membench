@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Run the three corun placements and bar-chart their makespan.
+"""Run the corun placements and bar-chart their makespan.
 
-  hot_on_slow    chase fast, scatter slow  (AOL-correct placement)  -> optimal
-  MEMTIS_managed kernel chooses (DRAM capped, regions unbound)      -> what MEMTIS does
-  hot_on_fast    chase slow, scatter fast  (MEMTIS's wrong pick)    -> worst
+  all_on_fast    both regions on DRAM                              -> all-fast baseline
+  all_on_slow    both regions on slow tier                         -> all-slow floor
+  hot_on_slow    chase fast, scatter slow   (AOL-correct)          -> optimal split
+  hot_on_fast    chase slow, scatter fast   (MEMTIS's wrong pick)  -> worst split
+  MEMTIS_managed kernel chooses (DRAM capped, regions unbound)     -> what MEMTIS does
 
-MEMTIS misplaces (ranks scatter hotter by raw LLC-miss count), so the managed
-bar lands near the worst static bar instead of the optimal one. That gap is the
-misplacement cost.
+("hot" = scatter, the page MEMTIS ranks hottest by raw LLC-miss count.) MEMTIS
+promotes scatter and demotes chase, so the managed bar lands near hot_on_fast
+instead of hot_on_slow. That gap is the misplacement cost.
 
-Run as root (membench pins memory / writes htmm sysfs):
-    sudo ./graph_maker.py
+Run as your user (each scenario prefixes sudo internally):
+    ./graph_maker.py
 Tune the shared knobs with flags; see -h.
 """
 
@@ -37,14 +39,18 @@ def build_scenarios(a):
              "-L", str(a.region), "-N", str(a.chase), "-M", str(a.scatter),
              "-D", str(a.delay), "-c", str(a.core)]
     return [
+        ("all_on_fast\n",
+         corun + ["-A", str(a.fast), "-B", str(a.fast)]),
+        ("all_on_slow\n",
+         corun + ["-A", str(a.slow), "-B", str(a.slow)]),
+        ("hot_on_fast\n",
+         corun + ["-A", str(a.slow), "-B", str(a.fast)]),
         ("hot_on_slow\n",
          corun + ["-A", str(a.fast), "-B", str(a.slow)]),
         ("MEMTIS_managed\n",
          ["sudo", str(MANAGED), "-d", str(a.cap), "-L", str(a.region),
           "-N", str(a.chase), "-M", str(a.scatter), "-D", str(a.delay),
           "-c", str(a.core), "-f", str(a.fast)]),
-        ("hot_on_fast\n",
-         corun + ["-A", str(a.slow), "-B", str(a.fast)]),
     ]
 
 
@@ -66,12 +72,14 @@ def makespan_of(label, argv):
 
 
 def plot(labels, values, out_path):
-    # green optimal, red managed (the result), grey worst reference
-    colors = ["#2ca02c", "#7f7f7f", "#d62728"]
-    fig, ax = plt.subplots(figsize=(8, 5))
-    bars = ax.bar(labels, values, color=colors[: len(values)])
+    # one colour per scenario, in build_scenarios order:
+    # all_fast(green) all_slow(red) hot_on_slow(blue) hot_on_fast(gray) managed(orange)
+    palette = ["#2ca02c", "#d62728", "#1f77b4", "#7f7f7f", "#ff7f0e"]
+    colors = (palette * ((len(values) // len(palette)) + 1))[: len(values)]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    bars = ax.bar(labels, values, color=colors)
     ax.set_ylabel("makespan (seconds)")
-    ax.set_title("membench corun placements: optimal vs MEMTIS vs worst")
+    ax.set_title("membench corun placements: makespan by tier assignment")
     ax.bar_label(bars, fmt="%.1f", padding=3)
     ax.margins(y=0.15)
     ax.grid(axis="y", linestyle=":", alpha=0.5)
@@ -84,8 +92,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-L", "--region", type=int, default=2048, help="region MB per workload")
-    p.add_argument("-N", "--chase", type=int, default=0.9, help="chase passes")
-    p.add_argument("-M", "--scatter", type=int, default=1.5146, help="scatter passes")
+    p.add_argument("-N", "--chase", type=float, default=0.9, help="chase passes (fractional ok)")
+    p.add_argument("-M", "--scatter", type=float, default=1.5146, help="scatter passes (fractional ok)")
     p.add_argument("-D", "--delay", type=int, default=8000, help="scatter think-time")
     p.add_argument("-c", "--core", type=int, default=0, help="first core")
     p.add_argument("-d", "--cap", type=int, default=2048, help="managed DRAM cap MB")
