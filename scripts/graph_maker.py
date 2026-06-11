@@ -18,6 +18,7 @@ Tune the shared knobs with flags; see -h.
 
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,7 @@ def build_scenarios(a):
 def makespan_of(label, argv):
     """Run one scenario, return its makespan_sec (float) or None on failure."""
     print(f"running {label.splitlines()[0]} ...", flush=True)
+    print(f"  $ {shlex.join(argv)}", flush=True)
     r = subprocess.run(argv, capture_output=True, text=True)
     out = r.stdout + r.stderr     # managed prints to both; search all
     m = MAKESPAN_RE.search(out)
