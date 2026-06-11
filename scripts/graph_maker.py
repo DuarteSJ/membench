@@ -96,6 +96,8 @@ def main():
     p.add_argument("-L", "--region", type=int, default=2048, help="region MB per workload")
     p.add_argument("-N", "--chase", type=float, default=0.9, help="chase passes (fractional ok)")
     p.add_argument("-M", "--scatter", type=float, default=1.5146, help="scatter passes (fractional ok)")
+    p.add_argument("-x", "--mult", type=float, default=1.0,
+                   help="scale both -N and -M by this (keeps their ratio; longer runs)")
     p.add_argument("-D", "--delay", type=int, default=8000, help="scatter think-time")
     p.add_argument("-c", "--core", type=int, default=0, help="first core")
     p.add_argument("-d", "--cap", type=int, default=2048, help="managed DRAM cap MB")
@@ -103,6 +105,8 @@ def main():
     p.add_argument("--slow", type=int, default=2, help="slow node")
     p.add_argument("-o", "--out", default=str(HERE / "makespan.png"), help="output PNG")
     a = p.parse_args()
+    a.chase *= a.mult           # scale work up/down, keeping the N:M ratio
+    a.scatter *= a.mult
 
     if not BIN.exists():
         sys.exit(f"membench not built at {BIN} (run 'make -C {BIN.parent}')")
