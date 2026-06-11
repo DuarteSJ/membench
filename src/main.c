@@ -197,6 +197,7 @@ static void usage(const char *p)
         "  -M <passes>         scatter work, fractional ok (1 pass = full traversal) (default 20)\n"
         "  -A <node>           chase region node, <0 unbound (default -1)\n"
         "  -B <node>           scatter region node, <0 unbound (default -1)\n"
+        "  -O <chase|scatter>  which region to alloc/first-touch first (default chase)\n"
         "  (both unbound = let MEMTIS place/migrate; -A 0 -B 2 = one per tier)\n"
         "  tune -N/-M/-D in the both-fast run (-A 0 -B 0) until secs match, then\n"
         "  lock them and run the cross-tier placements.\n"
@@ -264,20 +265,34 @@ static int run_single(const char *pattern, size_t region_mb, double secs,
 
 static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_node,
                      uint64_t seed, uint64_t delay, double chase_passes,
-                     double scatter_passes)
+                     double scatter_passes, int scatter_first)
 {
     region_t chreg, screg;
-    if (setup_region(&chreg, chase_chunk, region_mb, chase_node, seed) != 0)
-        return 1;
-    if (setup_region(&screg, scatter_chunk, region_mb, scatter_node, seed) != 0) {
-        region_free(&chreg);
-        return 1;
+
+    /* Allocation order = first-touch order, which decides who grabs the fast
+     * tier when DRAM is capped (pages go DRAM-first until the cap, then spill).
+     * `scatter_first` lets the late-touched region start in the slow tier. */
+    if (scatter_first) {
+        if (setup_region(&screg, scatter_chunk, region_mb, scatter_node, seed) != 0)
+            return 1;
+        if (setup_region(&chreg, chase_chunk, region_mb, chase_node, seed) != 0) {
+            region_free(&screg);
+            return 1;
+        }
+    } else {
+        if (setup_region(&chreg, chase_chunk, region_mb, chase_node, seed) != 0)
+            return 1;
+        if (setup_region(&screg, scatter_chunk, region_mb, scatter_node, seed) != 0) {
+            region_free(&chreg);
+            return 1;
+        }
     }
 
-    fprintf(stderr, "membench corun: region=%zuMB  "
+    fprintf(stderr, "membench corun: region=%zuMB  alloc=%s-first  "
                     "chase(node=%d core=%d passes=%g)  "
                     "scatter(node=%d core=%d passes=%g D=%llu)\n",
-            region_mb, chase_node, core0, chase_passes,
+            region_mb, scatter_first ? "scatter" : "chase",
+            chase_node, core0, chase_passes,
             scatter_node, core0 + 1, scatter_passes,
             (unsigned long long)delay);
 
@@ -327,9 +342,10 @@ int main(int argc, char **argv)
     int chase_node = -1, scatter_node = -1;
     uint64_t seed = 1, delay = 0;
     double chase_passes = 20, scatter_passes = 20;
+    int scatter_first = 0;
     int opt;
 
-    while ((opt = getopt(argc, argv, "m:p:L:s:t:c:X:S:D:A:B:N:M:h")) != -1) {
+    while ((opt = getopt(argc, argv, "m:p:L:s:t:c:X:S:D:A:B:N:M:O:h")) != -1) {
         switch (opt) {
         case 'm': mode = optarg; break;
         case 'p': pattern = optarg; break;
@@ -344,6 +360,12 @@ int main(int argc, char **argv)
         case 'B': scatter_node = atoi(optarg); break;
         case 'N': chase_passes = strtod(optarg, NULL); break;
         case 'M': scatter_passes = strtod(optarg, NULL); break;
+        case 'O':
+            if (!strcmp(optarg, "scatter")) scatter_first = 1;
+            else if (!strcmp(optarg, "chase")) scatter_first = 0;
+            else { fprintf(stderr, "-O wants chase|scatter, got %s\n", optarg);
+                   return 2; }
+            break;
         case 'h': default: usage(argv[0]); return opt == 'h' ? 0 : 2;
         }
     }
@@ -353,7 +375,7 @@ int main(int argc, char **argv)
                           seed, delay);
     if (!strcmp(mode, "corun"))
         return run_corun(region_mb, core0, chase_node, scatter_node, seed, delay,
-                         chase_passes, scatter_passes);
+                         chase_passes, scatter_passes, scatter_first);
 
     fprintf(stderr, "unknown mode: %s (want single|corun)\n", mode);
     return 2;
