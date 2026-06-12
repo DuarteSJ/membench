@@ -135,7 +135,7 @@ rc=$?
 echo $$ > "$CG_DIR/cgroup.procs" 2>/dev/null || true
 
 echo
-printf "---- htmm / migration counters ----\n%-28s %14s %14s %14s\n" \
+printf -- "---- htmm / migration counters ----\n%-28s %14s %14s %14s\n" \
        counter before after delta
 grep -e htmm -e pgmig /proc/vmstat > /tmp/managed_corun.vmstat.after 2>/dev/null || true
 if [[ -s /tmp/managed_corun.vmstat.before ]]; then

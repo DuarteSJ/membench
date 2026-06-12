@@ -14,15 +14,15 @@
 #include <string.h>
 #include <unistd.h>
 #include <assert.h>
-#include <immintrin.h>   /* _mm_pause for scatter think-time */
+#include <immintrin.h>
 
 #ifdef MEMBENCH_NUMA
 #include <numa.h>
 #endif
 
 /* unroll for the scatter stream: how many independent misses we try to keep
- * in flight per iteration. Push toward the core's LFB/MSHR limit (~10-16 on
- * Skylake) for a stronger MLP signal. */
+ * in flight per iteration. Push toward the core's LFB/MSHR limit for a stronger
+ * MLP signal. */
 #define SCATTER_UNROLL 8
 
 /* odd 64-bit constant (Fibonacci hashing): multiplying a counter by this mod
