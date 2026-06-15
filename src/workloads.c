@@ -20,11 +20,6 @@
 #include <numa.h>
 #endif
 
-/* unroll for the scatter stream: how many independent misses we try to keep
- * in flight per iteration. Push toward the core's LFB/MSHR limit for a stronger
- * MLP signal. */
-#define SCATTER_UNROLL 8
-
 /* odd 64-bit constant (Fibonacci hashing): multiplying a counter by this mod
  * 2^n is a bijection, so the stream visits every line exactly once per pass in
  * a scattered order the prefetcher can't follow. */
@@ -171,30 +166,19 @@ size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
     size_t nlines = r->nlines;
     size_t mask = nlines - 1;
     size_t elems_per_line = CACHELINE / sizeof(uint64_t);  /* 8 */
-    uint64_t acc[SCATTER_UNROLL];
-    size_t done = 0;
-    size_t k;
+    uint64_t acc = 0;
+    size_t done;
 
     /* power-of-two line count is a precondition (validated in main): the masked
      * multiply is only a bijection mod 2^n. */
     assert(nlines && (nlines & mask) == 0);
 
-    for (k = 0; k < SCATTER_UNROLL; k++)
-        acc[k] = 0;
-
-    while (done + SCATTER_UNROLL <= lines) {
-        size_t u;
-        /* SCATTER_UNROLL independent loads: each target depends only on the line
-         * counter, never on loaded data, so the core overlaps the misses. */
-        for (u = 0; u < SCATTER_UNROLL; u++) {
-            size_t line = ((c->line + u) * SCATTER_MULT) & mask;
-            acc[u] += base[line * elems_per_line];
-        }
-        c->line += SCATTER_UNROLL;
-        done += SCATTER_UNROLL;
+    for (done = 0; done < lines; done++) {
+        size_t line = (c->line * SCATTER_MULT) & mask;
+        acc += base[line * elems_per_line];
+        c->line++;
     }
-    for (k = 0; k < SCATTER_UNROLL; k++)
-        c->acc += acc[k];
+    c->acc += acc;
 
     /* think-time: throttle the access cadence WITHOUT descheduling (sleep would
      * free the core and cut traffic coarsely). Busy _mm_pause keeps the thread
