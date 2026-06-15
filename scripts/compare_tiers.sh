@@ -13,7 +13,7 @@
 # Needs root (perf). Pass overrides before the command so they survive sudo:
 #   sudo FAST_NODE=0 SLOW_NODE=2 scripts/compare_tiers.sh
 #   sudo DELAY=2000 scripts/compare_tiers.sh             # throttle scatter
-# Tunables (DUR, REGION_MB, THREADS, CORE0, PATTERNS, DELAY) pass through to
+# Tunables (DUR, REGION_MB, CORE0, PATTERNS, DELAY) pass through to
 # characterize via the environment.
 #
 #   FAST_NODE  DRAM node for the fast-tier run            (default 0)

@@ -53,7 +53,7 @@ near-zero misses is nothing to rank against chase/scatter.)
 
    ```sh
    make -C src
-   sudo scripts/characterize.sh           # DUR=5 REGION_MB=2048 THREADS=1 to taste
+   sudo scripts/characterize.sh           # DUR=5 REGION_MB=2048 to taste
    ```
 
    To fit the kernel's AOL parameters (`a`, `b`) on this box, see
@@ -83,9 +83,9 @@ count above `chase`. `n` is a spin count, not a time unit. Needs per machine
 re-sweep (PAUSE latency varies). `chase` ignores it.
 
 ```sh
-./src/membench -p chase   -L 2048 -s 10 -t 1 -c 0            # unbound region
-./src/membench -p scatter -L 2048 -s 10 -t 4 -c 0 -X 0       # 4 threads, pinned node 0 (needs NUMA=1)
-./src/membench -p scatter -L 2048 -s 10 -t 1 -c 0 -D 2000    # throttled scatter (think-time)
+./src/membench -p chase   -L 2048 -s 10 -c 0            # unbound region
+./src/membench -p scatter -L 2048 -s 10 -c 0 -X 0       # pinned node 0 (needs NUMA=1)
+./src/membench -p scatter -L 2048 -s 10 -c 0 -D 2000    # throttled scatter (think-time)
 ```
 
 ## `corun` mode (implemented)

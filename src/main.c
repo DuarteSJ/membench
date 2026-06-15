@@ -43,7 +43,7 @@ typedef size_t (*chunk_fn)(const region_t *, cursor_t *, size_t);
 struct worker {
     pthread_t       th;
     int             core;
-    int             node;    /* region's NUMA node (for reporting; <0 unbound) */
+    int             node;    /* region's NUMA node (<0 unbound) */
     const char     *role;    /* "chase" / "scatter" (corun output) */
     const region_t *region;
     chunk_fn        fn;
@@ -189,7 +189,6 @@ static void usage(const char *p)
         " single mode (timed):\n"
         "  -p <chase|scatter>  access pattern            (default chase)\n"
         "  -s <sec>            run duration              (default 10)\n"
-        "  -t <n>              worker threads            (default 1)\n"
         "  -X <node>           NUMA node, <0 = unbound   (default -1)\n"
         "\n"
         " corun mode (fixed work; chase on core0, scatter on core0+1):\n"
@@ -203,7 +202,7 @@ static void usage(const char *p)
         "  lock them and run the cross-tier placements.\n"
         "\n"
         "Emits machine-readable line(s) on stdout:\n"
-        "  single: membench,mode=single,pattern=<p>,region_mb=<L>,threads=<t>,"
+        "  single: membench,mode=single,pattern=<p>,region_mb=<L>,"
         "sec=<s>,accesses=<n>,maccess_per_s=<r>,gib_per_s=<bw>,delay=<D>\n"
         "  corun : membench,mode=corun,role=<chase|scatter>,region_mb=<L>,node=<N>,"
         "sec=<s>,accesses=<n>,maccess_per_s=<r>,gib_per_s=<bw>,delay=<D>  (x2)\n"
@@ -212,53 +211,41 @@ static void usage(const char *p)
 }
 
 static int run_single(const char *pattern, size_t region_mb, double secs,
-                      int threads, int core0, int node, uint64_t seed,
-                      uint64_t delay)
+                      int core0, int node, uint64_t seed, uint64_t delay)
 {
     chunk_fn fn = pattern_fn(pattern);
     if (!fn) { fprintf(stderr, "unknown pattern: %s\n", pattern); return 2; }
-    if (threads < 1) threads = 1;
 
     region_t region;
     if (setup_region(&region, fn, region_mb, node, seed) != 0)
         return 1;
 
-    fprintf(stderr, "membench single: pattern=%s region=%zuMB threads=%d "
+    fprintf(stderr, "membench single: pattern=%s region=%zuMB "
                     "node=%d dur=%.1fs nlines=%zu\n",
-            pattern, region_mb, threads, node, secs, region.nlines);
+            pattern, region_mb, node, secs, region.nlines);
 
-    uint64_t eff_delay = (fn == scatter_chunk) ? delay : 0;   /* chase ignores -D */
-    struct worker *ws = calloc(threads, sizeof(*ws));
-    for (int i = 0; i < threads; i++) {
-        ws[i].core = core0 + i;
-        ws[i].node = node;
-        ws[i].region = &region;
-        ws[i].fn = fn;
-        ws[i].delay = eff_delay;
+    struct worker w;
+    memset(&w, 0, sizeof(w));
+    w.core   = core0;
+    w.node   = node;
+    w.region = &region;
+    w.fn     = fn;
+    w.delay  = (fn == scatter_chunk) ? delay : 0;   /* chase ignores -D */
+
+    if (run_workers(&w, 1, secs) != 0) {
+        region_free(&region); return 1;
     }
 
-    if (run_workers(ws, threads, secs) != 0) {
-        free(ws); region_free(&region); return 1;
-    }
-
-    uint64_t total_lines = 0, sink = 0;
-    double elapsed = 0;
-    for (int i = 0; i < threads; i++) {
-        total_lines += ws[i].lines;
-        sink ^= ws[i].sink;
-        if (ws[i].secs > elapsed) elapsed = ws[i].secs;   /* slowest worker */
-    }
-
-    double accesses = (double)total_lines;
-    printf("membench,mode=single,pattern=%s,region_mb=%zu,threads=%d,"
+    double accesses = (double)w.lines;
+    double elapsed  = w.secs;
+    printf("membench,mode=single,pattern=%s,region_mb=%zu,"
            "sec=%.3f,accesses=%.0f,maccess_per_s=%.2f,gib_per_s=%.3f,delay=%llu\n",
-           pattern, region_mb, threads, elapsed, accesses,
+           pattern, region_mb, elapsed, accesses,
            accesses / elapsed / 1e6,
            accesses * CACHELINE / elapsed / (double)(1ULL << 30),
-           (unsigned long long)eff_delay);
-    fprintf(stderr, "  sink=%llu (ignore)\n", (unsigned long long)sink);
+           (unsigned long long)w.delay);
+    fprintf(stderr, "  sink=%llu (ignore)\n", (unsigned long long)w.sink);
 
-    free(ws);
     region_free(&region);
     return 0;
 }
@@ -338,20 +325,19 @@ int main(int argc, char **argv)
     const char *pattern = "chase";
     size_t region_mb = 2048;
     double secs = 10.0;
-    int threads = 1, core0 = 0, node = -1;
+    int core0 = 0, node = -1;
     int chase_node = -1, scatter_node = -1;
     uint64_t seed = 1, delay = 0;
     double chase_passes = 20, scatter_passes = 20;
     int scatter_first = 0;
     int opt;
 
-    while ((opt = getopt(argc, argv, "m:p:L:s:t:c:X:S:D:A:B:N:M:O:h")) != -1) {
+    while ((opt = getopt(argc, argv, "m:p:L:s:c:X:S:D:A:B:N:M:O:h")) != -1) {
         switch (opt) {
         case 'm': mode = optarg; break;
         case 'p': pattern = optarg; break;
         case 'L': region_mb = strtoull(optarg, NULL, 10); break;
         case 's': secs = strtod(optarg, NULL); break;
-        case 't': threads = atoi(optarg); break;
         case 'c': core0 = atoi(optarg); break;
         case 'X': node = atoi(optarg); break;
         case 'S': seed = strtoull(optarg, NULL, 10); break;
@@ -371,8 +357,7 @@ int main(int argc, char **argv)
     }
 
     if (!strcmp(mode, "single"))
-        return run_single(pattern, region_mb, secs, threads, core0, node,
-                          seed, delay);
+        return run_single(pattern, region_mb, secs, core0, node, seed, delay);
     if (!strcmp(mode, "corun"))
         return run_corun(region_mb, core0, chase_node, scatter_node, seed, delay,
                          chase_passes, scatter_passes, scatter_first);
