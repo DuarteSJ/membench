@@ -30,7 +30,7 @@
 #
 # chase and scatter split on AOL (exposed latency per request): that gap is exactly
 # what AOL-weighted hotness exploits and stock MEMTIS, ranking by miss count
-# alone, cannot. macc/s yields k, the equal-wall-time calibration multiplier.
+# alone, cannot. acc/s yields k, the equal-wall-time calibration multiplier.
 
 set -u
 
@@ -57,15 +57,15 @@ field() { # $1=csvfile $2=event-substring
     awk -F, -v ev="$2" '$0 ~ ev {gsub(/ /,"",$1); print $1; exit}' "$1"
 }
 
-declare -A MACC   # pattern -> maccess_per_s (for the k multiplier below)
+declare -A ACC   # pattern -> accesses/s (millions; for the k multiplier below)
 
 if [[ "$NODE" -lt 0 ]]; then tier="unbound / local DRAM (fast tier)";
 else                         tier="pinned to NUMA node $NODE"; fi
 printf 'region: %s MB, %s, %ss each, scatter think-time -D %s\n\n' \
        "$REGION_MB" "$tier" "$DUR" "$DELAY"
 
-printf "%-7s %12s %12s %8s %11s %9s %6s %8s\n" \
-       pattern A1 A3 AOL "llc_miss/s" "macc/s" P aol_wt
+printf "%-7s %12s %12s %8s %11s %11s %6s %8s\n" \
+       pattern A1 A3 AOL "llc_miss/s" "acc/s" P aol_wt
 printf '%.0s-' {1..82}; echo
 
 for pat in $PATTERNS; do
@@ -79,9 +79,9 @@ for pat in $PATTERNS; do
     # membench prints one CSV line on stdout. Missing => it never ran (NUMA
     # build? region alloc failed?); perf will still report tiny startup counts,
     # so guard on this FIRST or the noise masquerades as data.
-    macc="$(awk -F, '/^membench,/{for(i=1;i<=NF;i++) if($i ~ /^maccess_per_s=/){
+    acc="$(awk -F, '/^membench,/{for(i=1;i<=NF;i++) if($i ~ /^maccess_per_s=/){
                 sub(/maccess_per_s=/,"",$i); print $i; exit}}' "$perf_csv.out")"
-    if [[ -z "$macc" ]]; then
+    if [[ -z "$acc" ]]; then
         echo "$pat: membench produced no result line — it did not run." >&2
         echo "  likely: binary built without NUMA but -X $NODE requested," >&2
         echo "          or region alloc failed. membench stderr:" >&2
@@ -89,7 +89,7 @@ for pat in $PATTERNS; do
         rm -f "$perf_csv" "$perf_csv.err" "$perf_csv.out"
         continue
     fi
-    MACC[$pat]="$macc"
+    ACC[$pat]="$acc"
 
     a1="$(field "$perf_csv" 'event=0xb1,umask=0x01,cmask=0x01')"
     a3="$(field "$perf_csv" 'event=0xb0,umask=0x01')"
@@ -105,8 +105,8 @@ for pat in $PATTERNS; do
     fi
 
     # AOL, llc/s, P, and the predicted aol_weight (kernel's fixed-point).
-    read -r aol llcs p wt < <(awk \
-        -v a1="$a1" -v a3="$a3" -v llc="${llc:-0}" \
+    read -r aol llcs p wt accs < <(awk \
+        -v a1="$a1" -v a3="$a3" -v llc="${llc:-0}" -v acc="$acc" \
         -v sllc="${sllc:-0}" -v cyc="${cyc:-0}" -v d="$DUR" 'BEGIN{
             aol  = (a3>0 ? a1/a3 : 0);
             llcs = (d>0   ? llc/d : 0);
@@ -114,10 +114,12 @@ for pat in $PATTERNS; do
             a=0.0625; b=1.28;
             k  = (aol>0 ? aol/(a*aol + b) : 0);
             wt = (1.0 + p*k) * 1024.0;     # kernel weight, AOL_SCALE fixed point
-            printf "%.2f %.3e %.3f %.0f", aol, llcs, p, wt }')
+            accs = acc*1e6;               # membench reports millions/s; scale to
+                                          # raw acc/s so it matches llc_miss/s
+            printf "%.2f %.3e %.3f %.0f %.3e", aol, llcs, p, wt, accs }')
 
-    printf "%-7s %12s %12s %8s %11s %9s %6s %8s\n" \
-           "$pat" "$a1" "$a3" "$aol" "$llcs" "$macc" "$p" "$wt"
+    printf "%-7s %12s %12s %8s %11s %11s %6s %8s\n" \
+           "$pat" "$a1" "$a3" "$aol" "$llcs" "$accs" "$p" "$wt"
     rm -f "$perf_csv" "$perf_csv.err" "$perf_csv.out"
 done
 
@@ -125,8 +127,8 @@ done
 # (-L), so one pass = nlines accesses for both; equal fast-tier time needs
 # scatter to run k x chase's passes -> start the corun sweep at -M = k*-N, then
 # fine-tune -N/-M/-D. Re-measure on the target box.
-if [[ -n "${MACC[chase]:-}" && -n "${MACC[scatter]:-}" ]]; then
-    awk -v c="${MACC[chase]}" -v m="${MACC[scatter]}" 'BEGIN{
+if [[ -n "${ACC[chase]:-}" && -n "${ACC[scatter]:-}" ]]; then
+    awk -v c="${ACC[chase]}" -v m="${ACC[scatter]}" 'BEGIN{
         if (c>0) printf "\nmultiplier  k = scatter/chase throughput = %.2f  (corun: -M ~= k*-N)\n", m/c
         else     print  "\nmultiplier  chase throughput is zero — check the run" }'
 fi

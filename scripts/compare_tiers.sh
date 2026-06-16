@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # compare_tiers.sh — run characterize.sh on the fast and the slow node, then
-# report each pattern's slow-tier slowdown = fast macc/s ÷ slow macc/s.
+# report each pattern's slow-tier slowdown = fast acc/s ÷ slow acc/s.
 #
 # This is the cross-tier view characterize can't give on its own (it probes one
 # node per run). chase, being latency-bound, should slow more than scatter on a true
@@ -37,8 +37,8 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     echo "warn: not root — perf will likely report no counts. Re-run under sudo." >&2
 fi
 
-# macc/s is column 6 of a characterize data row ("<pat> A1 A3 AOL llc macc P wt").
-macc_of() { # $1=characterize-output  $2=pattern
+# acc/s is column 6 of a characterize data row ("<pat> A1 A3 AOL llc acc P wt").
+acc_of() { # $1=characterize-output  $2=pattern
     awk -v p="$2" '$1==p {print $6; exit}' <<<"$1"
 }
 
@@ -57,10 +57,10 @@ echo "$slow_out"
 echo
 printf '%.0s─' {1..70}; echo
 for pat in $PATTERNS; do
-    f="$(macc_of "$fast_out" "$pat")"
-    s="$(macc_of "$slow_out" "$pat")"
+    f="$(acc_of "$fast_out" "$pat")"
+    s="$(acc_of "$slow_out" "$pat")"
     if [[ -z "$f" || -z "$s" ]]; then
-        printf '%s: missing macc/s (fast=%s slow=%s) — check the runs above\n' \
+        printf '%s: missing acc/s (fast=%s slow=%s) — check the runs above\n' \
                "$pat" "${f:-?}" "${s:-?}"
         continue
     fi
