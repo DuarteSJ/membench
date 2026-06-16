@@ -52,13 +52,11 @@ void chase_build(region_t *r, uint64_t seed);
 size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines);
 
 /*
- * scatter: sequential, data-INDEPENDENT reads (index from a counter, not from
- * loaded data), one u64 per cache line. The OOO core and HW prefetcher keep
- * many misses outstanding -> high MLP, latency hidden.
- * PMU signature: high LLC-miss rate (like chase, from region >> cache), LOW AOL,
- * high MLP. BW-bound. A linear streaming read — the SOAR/ALTO "bandwidth" probe.
- * nlines must be a power of two so the wrap is a cheap mask, not a per-access
- * modulo. Caller must validate this; the chunk loop assumes it.
+ * scatter: sequential, data-independent reads (index from a counter), one u64
+ * per cache line -> high MLP, latency hidden.
+ * PMU signature: high LLC-miss rate (from region >> cache), LOW AOL, high MLP.
+ * BW-bound. nlines must be a power of two so the index wrap is a cheap mask, not
+ * a per-access modulo. Caller must validate this; the chunk loop assumes it.
  */
 size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines);
 

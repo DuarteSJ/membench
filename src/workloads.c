@@ -170,12 +170,10 @@ size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
     assert(nlines && (nlines & mask) == 0);
 
     for (done = 0; done < lines; done++) {
-        /* Sequential, data-INDEPENDENT reads: the index comes from a counter,
-         * never from loaded data, so the OoO core (and the HW prefetcher) keep
-         * many misses in flight -> high MLP, latency hidden -> BW-bound. The
-         * high LLC-miss rate is from the region being >> cache (compulsory
-         * misses), NOT from evading the prefetcher. One u64 per line so every
-         * load touches a fresh cache line. */
+        /* Sequential, data-independent reads (index from a counter), one u64
+         * per line -> high MLP, latency hidden, BW-bound. The high miss rate is
+         * just region >> cache (compulsory misses), so no need to scramble the
+         * order to defeat the prefetcher. */
         size_t line = c->line & mask;
         acc += base[line * elems_per_line];
         c->line++;

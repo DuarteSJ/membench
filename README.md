@@ -24,25 +24,20 @@ point.
 
 - **chase** - dependent pointer chase over a single-cycle random ring.
   Each load's address comes from the previous load -> MLP~=1, latency exposed.
-- **scatter** - **sequential, data-independent** reads (index from a counter, not
-  from loaded data), one u64 per cache line. The OOO core and HW prefetcher overlap
-  many misses (-> high MLP, latency hidden), so it's **bandwidth-bound**. The high
-  LLC-miss rate comes from the region being far larger than cache (compulsory
-  misses), *not* from evading the prefetcher — prefetch hides latency, not the
-  misses themselves. The index is `counter & (nlines-1)`; `nlines` must be a power
-  of two so the wrap is a cheap mask (a per-access modulo would put a division in
-  the hot loop) — `-L` non-pow2 is a hard error, no fallback. (It's a linear
-  streaming read — effectively the SOAR/ALTO "bandwidth" probe.)
+- **scatter** - **sequential, data-independent** reads (index from a counter),
+  one u64 per cache line -> high MLP, latency hidden, **bandwidth-bound**. The high
+  LLC-miss rate is just region ≫ cache (compulsory misses), so there's no need to
+  scramble the order to defeat the prefetcher. The index is `counter & (nlines-1)`;
+  `nlines` must be a power of two so the wrap is a cheap mask — `-L` non-pow2 is a
+  hard error.
   `-D <n>` adds **think-time** (busy-`pause` between chunks): throttles scatter's
   access cadence so it stops saturating the slow tier's bandwidth, turning it
   into a **high-miss but low-value** region — exactly the page stock MEMTIS
   over-promotes and AOL down-weights. scatter-only; `chase` ignores `-D`.
 
-(`scatter` *is* the linear/bandwidth read. At region ≫ cache it still racks up a
-high miss count — prefetch hides latency, not the compulsory misses — so MEMTIS
-ranks it hot despite its low per-access value. That mismatch is the whole point.
-Note the miss signal weakens once the region fits in cache, and the chase↔scatter
-AOL gap only opens up at large regions, so use ≥1 GB.)
+(scatter looks hot to MEMTIS — high miss count from region ≫ cache — but is cheap
+per access. That mismatch is the whole point. Use ≥1 GB: below that the chase↔scatter
+AOL gap is too small.)
 
 ## Test tiers (fast -> slow)
 
