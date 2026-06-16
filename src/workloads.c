@@ -174,7 +174,11 @@ size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
     assert(nlines && (nlines & mask) == 0);
 
     for (done = 0; done < lines; done++) {
-        size_t line = (c->line * SCATTER_MULT) & mask;
+        /* EXPERIMENT: prefetcher-beating disabled — sequential line order. On a
+         * large BW-bound region misses still leak through; SHRINK the region and
+         * the HW prefetcher hides them -> llc_miss/s collapses -> MEMTIS sees it
+         * cold. Restore (c->line * SCATTER_MULT) & mask to re-enable scatter. */
+        size_t line = c->line & mask;
         acc += base[line * elems_per_line];
         c->line++;
     }
