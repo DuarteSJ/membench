@@ -85,7 +85,7 @@ re-sweep (PAUSE latency varies). `chase` ignores it.
 
 ```sh
 ./src/membench -p chase   -L 2048 -s 10 -c 0            # unbound region
-./src/membench -p scatter -L 2048 -s 10 -c 0 -X 0       # pinned node 0 (needs NUMA=1)
+./src/membench -p scatter -L 2048 -s 10 -c 0 -X 0       # pinned to node 0
 ./src/membench -p scatter -L 2048 -s 10 -c 0 -D 2000    # throttled scatter (think-time)
 ```
 

@@ -16,9 +16,7 @@
 #include <assert.h>
 #include <immintrin.h>
 
-#ifdef MEMBENCH_NUMA
 #include <numa.h>
-#endif
 
 /* deterministic, full-width PRNG (xorshift64*) so chase rings are reproducible
  * across runs given a seed. rand() tops out at RAND_MAX and can't index a
@@ -36,7 +34,7 @@ static inline uint64_t xs_next(void)
 /* uniform in [0, bound) */
 static inline uint64_t xs_below(uint64_t bound)
 {
-    return xs_next() % bound;   /* modulo bias negligible at our scales */
+    return xs_next() % bound;
 }
 
 /* ---- region lifecycle --------------------------------------------------- */
@@ -57,18 +55,12 @@ int region_alloc(region_t *r, size_t bytes, int numa_node)
             return -1;
         }
     } else {
-#ifdef MEMBENCH_NUMA
         p = numa_alloc_onnode(bytes, numa_node);
         if (!p) {
             fprintf(stderr, "region_alloc: numa_alloc_onnode(node %d) failed\n",
                     numa_node);
             return -1;
         }
-#else
-        fprintf(stderr, "region_alloc: NUMA pinning requested (node %d) but "
-                        "built without MEMBENCH_NUMA\n", numa_node);
-        return -1;
-#endif
     }
 
     /* first-touch every page so the mapping is fully populated before timing */
@@ -86,14 +78,10 @@ void region_free(region_t *r)
 {
     if (!r->buf)
         return;
-#ifdef MEMBENCH_NUMA
     if (r->numa_node >= 0)
-        numa_free(r->buf, r->size);
+        numa_free(r->buf, r->size);   /* pinned: from numa_alloc_onnode */
     else
-        free(r->buf);
-#else
-    free(r->buf);
-#endif
+        free(r->buf);                 /* unbound: from posix_memalign */
     memset(r, 0, sizeof(*r));
 }
 

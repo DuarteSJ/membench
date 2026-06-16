@@ -1,21 +1,12 @@
 # membench build.
 #
-# NUMA pinning (-X <node>, e.g. slow-tier runs) needs libnuma, and it is core to
-# this suite, so it is ON BY DEFAULT. Opt out only on a box without libnuma-dev:
-#
-#   make           # default: NUMA enabled (needs libnuma-dev / numactl)
-#   make NUMA=0    # portable: drop libnuma, -X <node> becomes a hard error
+# NUMA pinning (-X/-A/-B <node>) is core to this tiered-memory suite, so libnuma
+# is required. Install libnuma-dev / numactl if linking -lnuma fails.
 
 CC      ?= gcc
 CFLAGS  ?= -O3 -march=native -W -Wall -Wextra -Wuninitialized -Wstrict-aliasing
 LDFLAGS ?=
-LDLIBS  := -lpthread
-
-NUMA    ?= 1
-ifneq ($(NUMA),0)
-CFLAGS  += -DMEMBENCH_NUMA
-LDLIBS  += -lnuma
-endif
+LDLIBS  := -lpthread -lnuma
 
 OBJS := main.o workloads.o
 BIN  := membench
