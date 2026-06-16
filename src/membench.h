@@ -38,7 +38,7 @@ typedef struct chase_node {
 typedef struct {
     const chase_node_t *cur;  /* chase position */
     size_t   line;            /* stream line counter */
-    uint64_t acc;             /* sink: defeats dead-code elimination */
+    uint64_t acc;             /* sink: defeats dce */
     uint64_t delay;           /* scatter think-time: busy-pause iters per chunk (0=off) */
 } cursor_t;
 
@@ -46,8 +46,7 @@ typedef struct {
 
 /*
  * chase: dependent pointer chase. Each load's address comes from the previous
- * load -> MLP ~= 1, full memory latency exposed on every miss.
- * PMU signature: high LLC-miss rate, HIGH AOL (A1/A3), low MLP. Latency-bound.
+ * load. PMU signature: high LLC-miss rate, HIGH AOL (A1/A3), low MLP.
  */
 void chase_build(region_t *r, uint64_t seed);
 size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines);
