@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# compare_tiers.sh — run characterize.sh on the fast and the slow node, then
+# compare_tiers.sh - run characterize.sh on the fast and the slow node, then
 # report each pattern's slow-tier slowdown = fast acc/s ÷ slow acc/s.
 #
 # This is the cross-tier view characterize can't give on its own (it probes one
 # node per run). chase, being latency-bound, should slow more than scatter on a true
-# slow tier — BUT at full intensity scatter saturates slow-tier bandwidth and slows
+# slow tier - BUT at full intensity scatter saturates slow-tier bandwidth and slows
 # just as much, hiding the gap. Throttle scatter with DELAY (membench -D think-time,
 # scatter-only): drop its bandwidth below the slow-tier ceiling and its slowdown
 # falls below chase's, exposing the latency-vs-bandwidth split this suite tests.
@@ -34,7 +34,7 @@ if [[ ! -x "$CHAR" ]]; then
     exit 1
 fi
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "warn: not root — perf will likely report no counts. Re-run under sudo." >&2
+    echo "warn: not root - perf will likely report no counts. Re-run under sudo." >&2
 fi
 
 # acc/s is column 6 of a characterize data row ("<pat> A1 A3 AOL llc acc P wt").
@@ -60,11 +60,11 @@ for pat in $PATTERNS; do
     f="$(acc_of "$fast_out" "$pat")"
     s="$(acc_of "$slow_out" "$pat")"
     if [[ -z "$f" || -z "$s" ]]; then
-        printf '%s: missing acc/s (fast=%s slow=%s) — check the runs above\n' \
+        printf '%s: missing acc/s (fast=%s slow=%s) - check the runs above\n' \
                "$pat" "${f:-?}" "${s:-?}"
         continue
     fi
     awk -v p="$pat" -v f="$f" -v s="$s" 'BEGIN{
         if (s > 0) printf "%s gets %.2fx slower when placed in the slow tier\n", p, f/s
-        else       printf "%s: slow-tier throughput is zero — check the run\n", p }'
+        else       printf "%s: slow-tier throughput is zero - check the run\n", p }'
 done

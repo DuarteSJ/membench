@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# calibrate.sh — fit the AOL K-curve parameters (a, b) for the kernel, using the
+# calibrate.sh - fit the AOL K-curve parameters (a, b) for the kernel, using the
 # SOAR/ALTO microbenchmark (the same workloads the paper calibrated against).
 #   https://github.com/MoatLab/SoarAlto/tree/main/src/microbenchmark
 #
@@ -48,7 +48,7 @@ DUR="${DUR:-15}"
 BUF="${BUF:-2048}"
 OUT="${OUT:-$HERE/results/$(hostname)-calibrate.csv}"
 
-# Raw event encodings — byte layout [cmask][edge..][umask][event], identical to
+# Raw event encodings - byte layout [cmask][edge..][umask][event], identical to
 # linux/include/linux/htmm.h. The four counters the kernel consumes:
 #   A1    r010001b1  OFFCORE_REQUESTS_OUTSTANDING.DEMAND_DATA_RD, cmask=1 (cycles)
 #   A3    r000001b0  OFFCORE_REQUESTS.DEMAND_DATA_RD              (count)

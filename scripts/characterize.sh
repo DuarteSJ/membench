@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# characterize.sh — the FAST test tier.
+# characterize.sh - the FAST test tier.
 #
 # Runs each membench access pattern in isolation under `perf stat` and reports
 # the PMU signature that decides whether the kernel's hotness logic can tell the
-# patterns apart. Needs NO custom kernel and NO reboot — run it on stock to
+# patterns apart. Needs NO custom kernel and NO reboot - run it on stock to
 # prove the workloads behave before spending a kernel build/boot on a managed
 # run.
 #
@@ -21,7 +21,7 @@
 #   AOL = A1 / A3       (kernel's definition; ~avg exposed latency per request)
 #   P   = sllc / cyc    (stall fraction; the kernel's P)
 #   aol_wt = (1 + P*K)*1024 where K = AOL/(a + b/AOL), a=0.0625, b=1.28
-#           — the exact value the AOL kernel's `htmm_aol:` printk reports as
+#           - the exact value the AOL kernel's `htmm_aol:` printk reports as
 #             weight= for a window dominated by this pattern. 1024 = neutral.
 #
 # Expected signatures:
@@ -82,7 +82,7 @@ for pat in $PATTERNS; do
     acc="$(awk -F, '/^membench,/{for(i=1;i<=NF;i++) if($i ~ /^maccess_per_s=/){
                 sub(/maccess_per_s=/,"",$i); print $i; exit}}' "$perf_csv.out")"
     if [[ -z "$acc" ]]; then
-        echo "$pat: membench produced no result line — it did not run." >&2
+        echo "$pat: membench produced no result line - it did not run." >&2
         echo "  likely: binary built without NUMA but -X $NODE requested," >&2
         echo "          or region alloc failed. membench stderr:" >&2
         sed 's/^/    /' "$perf_csv.err" >&2
@@ -130,5 +130,5 @@ done
 if [[ -n "${ACC[chase]:-}" && -n "${ACC[scatter]:-}" ]]; then
     awk -v c="${ACC[chase]}" -v m="${ACC[scatter]}" 'BEGIN{
         if (c>0) printf "\nmultiplier  k = scatter/chase throughput = %.2f  (corun: -M ~= k*-N)\n", m/c
-        else     print  "\nmultiplier  chase throughput is zero — check the run" }'
+        else     print  "\nmultiplier  chase throughput is zero - check the run" }'
 fi

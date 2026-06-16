@@ -2,7 +2,7 @@
 
 Upstream: https://github.com/MoatLab/SoarAlto/tree/main/src/microbenchmark
 
-## `-S <N>` flag — configurable seq:pc multiplier
+## `-S <N>` flag - configurable seq:pc multiplier
 
 **Why.** Paper §2 hardcodes `op_iter * 26` read loops for the seq thread
 so it issues ~26B loads vs ~4B for the pc thread, balancing thread

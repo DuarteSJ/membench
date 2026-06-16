@@ -165,7 +165,7 @@ size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
     size_t done;
 
     /* power-of-two line count lets the wrap be a cheap mask instead of a per-
-     * access modulo — a division in the hot loop would add latency that masks
+     * access modulo. A division in the hot loop would add latency that masks
      * the memory signal. Validated in main(). */
     assert(nlines && (nlines & mask) == 0);
 

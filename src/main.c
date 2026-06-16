@@ -1,5 +1,5 @@
 /*
- * membench — purpose-built tiered-memory access-pattern benchmark.
+ * membench - purpose-built tiered-memory access-pattern benchmark.
  *
  * `single` mode: drives ONE pure access pattern over one persistent region for a
  * fixed wall-time, reporting throughput. The unit `scripts/characterize.sh`
@@ -295,7 +295,7 @@ static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_no
     /* target==0 would drop the worker into the timed loop, which in corun has no
      * deadline -> infinite spin. Reject before that can happen. */
     if (ws[0].target == 0 || ws[1].target == 0) {
-        fprintf(stderr, "corun: passes too small — target rounds to 0 lines "
+        fprintf(stderr, "corun: passes too small - target rounds to 0 lines "
                         "(chase=%llu scatter=%llu). Raise -N/-M.\n",
                 (unsigned long long)ws[0].target,
                 (unsigned long long)ws[1].target);

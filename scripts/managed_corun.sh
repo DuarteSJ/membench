@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# managed_corun.sh — run membench `corun` under MEMTIS management.
+# managed_corun.sh - run membench `corun` under MEMTIS management.
 #
 # Unlike the static -A/-B placements, here BOTH regions are unbound (-A -1 -B -1):
 # plain anon pages the kernel is free to migrate. We put membench in the `htmm`
@@ -63,7 +63,7 @@ if [[ ! -x "$BIN" ]]; then
     echo "membench not built at $BIN (run 'make -C $HERE/src')" >&2; exit 1
 fi
 if [[ ! -d /sys/kernel/mm/htmm ]]; then
-    echo "/sys/kernel/mm/htmm missing — not on the htmm/AOL kernel?" >&2; exit 1
+    echo "/sys/kernel/mm/htmm missing - not on the htmm/AOL kernel?" >&2; exit 1
 fi
 
 # ---- htmm sysfs settings (mirrors memtis-userspace run_bench.sh) ------------
@@ -96,7 +96,7 @@ cg_setup() {
     # cap the fast (DRAM) node; capacity tier left at max (default)
     local bytes=$(( DRAM_MB * 1024 * 1024 ))
     if [[ ! -e "$CG/memory.max_at_node${FAST_NODE}" ]]; then
-        echo "no memory.max_at_node${FAST_NODE} — htmm per-node cap unsupported?" >&2
+        echo "no memory.max_at_node${FAST_NODE} - htmm per-node cap unsupported?" >&2
         exit 1
     fi
     echo "$bytes" > "$CG/memory.max_at_node${FAST_NODE}"

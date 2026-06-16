@@ -28,14 +28,14 @@ point.
   one u64 per cache line -> high MLP, latency hidden, **bandwidth-bound**. The high
   LLC-miss rate is just region ≫ cache (compulsory misses), so there's no need to
   scramble the order to defeat the prefetcher. The index is `counter & (nlines-1)`;
-  `nlines` must be a power of two so the wrap is a cheap mask — `-L` non-pow2 is a
+  `nlines` must be a power of two so the wrap is a cheap mask; `-L` non-pow2 is a
   hard error.
   `-D <n>` adds **think-time** (busy-`pause` between chunks): throttles scatter's
   access cadence so it stops saturating the slow tier's bandwidth, turning it
-  into a **high-miss but low-value** region — exactly the page stock MEMTIS
+  into a **high-miss but low-value** region - exactly the page stock MEMTIS
   over-promotes and AOL down-weights. scatter-only; `chase` ignores `-D`.
 
-(scatter looks hot to MEMTIS — high miss count from region ≫ cache — but is cheap
+(scatter looks hot to MEMTIS, high miss count from region ≫ cache, but is cheap
 per access. That mismatch is the whole point. Use ≥1 GB: below that the chase↔scatter
 AOL gap is too small.)
 
@@ -44,13 +44,13 @@ AOL gap is too small.)
 1. **Characterize** - `scripts/characterize.sh`
    runs chase and scatter under `perf stat` and prints AOL / MLP / LLC-miss-rate /
    throughput. Proves the workloads have the intended PMU signatures **before**
-   touching the kernel. Look for chase AOL >> scatter AOL — that gap is the lever.
+   touching the kernel. Look for chase AOL >> scatter AOL - that gap is the lever.
 
    It also prints **`k = scatter/chase`** throughput: the corun starting ratio.
    corun regions are equal size (`-L`), so one pass = `nlines` accesses for both;
    equal fast-tier time then needs scatter to run `k x` chase's passes, i.e. start
    the sweep at `-M ≈ k*-N` and fine-tune. `k` depends on region size and machine
-   — recalibrate on the target box.
+   - recalibrate on the target box.
 
    ```sh
    make -C src
@@ -58,7 +58,7 @@ AOL gap is too small.)
    ```
 
    To fit the kernel's AOL parameters (`a`, `b`) on this box, see
-   [`calibrate/`](calibrate/README.md) — drives the **SOAR/ALTO microbench**
+   [`calibrate/`](calibrate/README.md) - drives the **SOAR/ALTO microbench**
    (pointer-chase + sequential, two points) on both NUMA tiers and prints the
    scaled kernel `#define`s.
 
@@ -92,13 +92,13 @@ re-sweep (PAUSE latency varies). `chase` ignores it.
 ## `corun` mode (implemented)
 
 Runs chase **and** scatter concurrently (chase on `core0`, scatter on `core0+1`),
-each doing a **fixed amount of work** — `-N` chase passes, `-M` scatter passes,
+each doing a **fixed amount of work** - `-N` chase passes, `-M` scatter passes,
 where 1 pass = one full region traversal (`nlines` accesses). Each reports its own
 completion time; a `summary` line carries makespan and sum. This is tier 3: the
 metric is **per-job completion time**, not throughput.
 
-Regions are placed independently — `-A` chase node, `-B` scatter node (`<0` =
-unbound) — so one binary covers every placement:
+Regions are placed independently - `-A` chase node, `-B` scatter node (`<0` =
+unbound) - so one binary covers every placement:
 
 | flags          | placement                         |
 |----------------|-----------------------------------|
@@ -106,13 +106,13 @@ unbound) — so one binary covers every placement:
 | `-A 0 -B 2`    | chase fast, scatter slow (**AOL pick**)   |
 | `-A 2 -B 0`    | scatter fast, chase slow (**MEMTIS pick**)|
 | `-A 2 -B 2`    | both slow                         |
-| `-A -1 -B -1`  | unbound — let MEMTIS place/migrate|
+| `-A -1 -B -1`  | unbound - let MEMTIS place/migrate|
 
 **Calibration:** in the both-fast run (`-A 0 -B 0`), sweep `-N`/`-M`/`-D` until the
 two `sec=` match (start at `-M ≈ k*-N` from characterize) **and** scatter still has
 more LLC misses than chase. Lock those three, then run the cross-tier placements
 with them fixed. Putting chase in the slow tier blows up makespan (latency-bound,
-no MLP to hide it); putting throttled scatter there barely moves it — that gap is
+no MLP to hide it); putting throttled scatter there barely moves it - that gap is
 the misplacement cost stock MEMTIS pays.
 
 For the unbound (MEMTIS-managed) run, the k-calibrated `-N`/`-M` matter: they keep
@@ -122,7 +122,7 @@ let the kernel remigrate the survivor before the contested window is observed.
 ```sh
 # 1. calibrate (both fast): tune -N/-M/-D until the two sec= match
 sudo ./src/membench -m corun -L 2048 -A 0 -B 0 -N 5 -M 50 -D 8000 -c 0
-# 2. MEMTIS pick (scatter fast, chase slow) — same N/M/D
+# 2. MEMTIS pick (scatter fast, chase slow) - same N/M/D
 sudo ./src/membench -m corun -L 2048 -A 2 -B 0 -N 5 -M 50 -D 8000 -c 0
 # 3. AOL pick (chase fast, scatter slow)
 sudo ./src/membench -m corun -L 2048 -A 0 -B 2 -N 5 -M 50 -D 8000 -c 0
