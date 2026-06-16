@@ -24,19 +24,25 @@ point.
 
 - **chase** - dependent pointer chase over a single-cycle random ring.
   Each load's address comes from the previous load -> MLP~=1, latency exposed.
-- **scatter** - scattered but **data-independent** reads (odd-multiplier / Fibonacci
-  hash of a counter, not of loaded data). Prefetcher can't follow it (-> misses)
-  but the OOO core overlaps many misses (-> high MLP, latency hidden). The index
-  is `(counter * MULT) & (nlines-1)`; that masked multiply is a full bijection
-  (every line once, scattered) **only when `nlines` is a power of two**, so the
-  region size must be a power of two — `-L` non-pow2 is a hard error, no fallback.
+- **scatter** - **sequential, data-independent** reads (index from a counter, not
+  from loaded data), one u64 per cache line. The OOO core and HW prefetcher overlap
+  many misses (-> high MLP, latency hidden), so it's **bandwidth-bound**. The high
+  LLC-miss rate comes from the region being far larger than cache (compulsory
+  misses), *not* from evading the prefetcher — prefetch hides latency, not the
+  misses themselves. The index is `counter & (nlines-1)`; `nlines` must be a power
+  of two so the wrap is a cheap mask (a per-access modulo would put a division in
+  the hot loop) — `-L` non-pow2 is a hard error, no fallback. (It's a linear
+  streaming read — effectively the SOAR/ALTO "bandwidth" probe.)
   `-D <n>` adds **think-time** (busy-`pause` between chunks): throttles scatter's
   access cadence so it stops saturating the slow tier's bandwidth, turning it
   into a **high-miss but low-value** region — exactly the page stock MEMTIS
   over-promotes and AOL down-weights. scatter-only; `chase` ignores `-D`.
 
-(No `seq` control: a prefetch-friendly linear read MEMTIS already filters to
-near-zero misses is nothing to rank against chase/scatter.)
+(`scatter` *is* the linear/bandwidth read. At region ≫ cache it still racks up a
+high miss count — prefetch hides latency, not the compulsory misses — so MEMTIS
+ranks it hot despite its low per-access value. That mismatch is the whole point.
+Note the miss signal weakens once the region fits in cache, and the chase↔scatter
+AOL gap only opens up at large regions, so use ≥1 GB.)
 
 ## Test tiers (fast -> slow)
 
@@ -74,7 +80,7 @@ near-zero misses is nothing to rank against chase/scatter.)
 Drives one pure pattern for a fixed wall-time; emits a machine-readable line.
 Used as the body of tier 1.
 
-`-L` (region MB) must be a power of two for `scatter` (bijection requirement above).
+`-L` (region MB) must be a power of two for `scatter` (cheap-mask index wrap, above).
 
 `-D <n>` is scatter-only think-time: `n` busy-`_mm_pause` iterations per ~1 MiB
 chunk, throttling cadence *without descheduling*. Sweep it (watch `gib_per_s`)

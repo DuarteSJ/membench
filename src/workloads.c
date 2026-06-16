@@ -20,11 +20,6 @@
 #include <numa.h>
 #endif
 
-/* odd 64-bit constant (Fibonacci hashing): multiplying a counter by this mod
- * 2^n is a bijection, so the stream visits every line exactly once per pass in
- * a scattered order the prefetcher can't follow. */
-static const uint64_t SCATTER_MULT = 0x9E3779B97F4A7C15ULL;
-
 /* deterministic, full-width PRNG (xorshift64*) so chase rings are reproducible
  * across runs given a seed. rand() tops out at RAND_MAX and can't index a
  * multi-million-node region. */
@@ -169,15 +164,18 @@ size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines)
     uint64_t acc = 0;
     size_t done;
 
-    /* power-of-two line count is a precondition (validated in main): the masked
-     * multiply is only a bijection mod 2^n. */
+    /* power-of-two line count lets the wrap be a cheap mask instead of a per-
+     * access modulo — a division in the hot loop would add latency that masks
+     * the memory signal. Validated in main(). */
     assert(nlines && (nlines & mask) == 0);
 
     for (done = 0; done < lines; done++) {
-        /* EXPERIMENT: prefetcher-beating disabled — sequential line order. On a
-         * large BW-bound region misses still leak through; SHRINK the region and
-         * the HW prefetcher hides them -> llc_miss/s collapses -> MEMTIS sees it
-         * cold. Restore (c->line * SCATTER_MULT) & mask to re-enable scatter. */
+        /* Sequential, data-INDEPENDENT reads: the index comes from a counter,
+         * never from loaded data, so the OoO core (and the HW prefetcher) keep
+         * many misses in flight -> high MLP, latency hidden -> BW-bound. The
+         * high LLC-miss rate is from the region being >> cache (compulsory
+         * misses), NOT from evading the prefetcher. One u64 per line so every
+         * load touches a fresh cache line. */
         size_t line = c->line & mask;
         acc += base[line * elems_per_line];
         c->line++;

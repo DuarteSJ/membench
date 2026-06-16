@@ -102,14 +102,14 @@ static chunk_fn pattern_fn(const char *name)
 {
     if (!strcmp(name, "chase")) return chase_chunk;
     if (!strcmp(name, "scatter"))   return scatter_chunk;
-    /* No `seq`: a prefetch control MEMTIS already filters (near-zero LLC
-     * misses) is nothing to rank against chase/scatter. */
+    /* Two patterns are enough to expose the AOL split: scatter = sequential /
+     * bandwidth (high MLP, low AOL), chase = latency (low MLP, high AOL). */
     return NULL;
 }
 
 /* alloc + prepare a region for one pattern on one node. scatter needs a power-of-two
- * line count (the index multiply is only a bijection mod 2^n); chase needs its
- * ring built. Returns 0 on success, -1 on error (region freed on error). */
+ * line count (so its index wrap is a cheap mask, not a per-access modulo); chase
+ * needs its ring built. Returns 0 on success, -1 on error (region freed on error). */
 static int setup_region(region_t *r, chunk_fn fn, size_t region_mb,
                         int node, uint64_t seed)
 {

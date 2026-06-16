@@ -52,12 +52,13 @@ void chase_build(region_t *r, uint64_t seed);
 size_t chase_chunk(const region_t *r, cursor_t *c, size_t lines);
 
 /*
- * scatter: scattered, prefetcher-defeating, but data-INDEPENDENT reads
- * (Fibonacci-hash index computed from a counter, not from loaded data). The
- * OOO core keeps many misses outstanding -> high MLP, latency hidden.
- * PMU signature: high LLC-miss rate (like chase), LOW AOL, high MLP. BW-bound.
- * Requires nlines to be a power of two (odd multiplier mod 2^n is a bijection).
- * Caller must validate this; the chunk loop assumes it.
+ * scatter: sequential, data-INDEPENDENT reads (index from a counter, not from
+ * loaded data), one u64 per cache line. The OOO core and HW prefetcher keep
+ * many misses outstanding -> high MLP, latency hidden.
+ * PMU signature: high LLC-miss rate (like chase, from region >> cache), LOW AOL,
+ * high MLP. BW-bound. A linear streaming read — the SOAR/ALTO "bandwidth" probe.
+ * nlines must be a power of two so the wrap is a cheap mask, not a per-access
+ * modulo. Caller must validate this; the chunk loop assumes it.
  */
 size_t scatter_chunk(const region_t *r, cursor_t *c, size_t lines);
 
