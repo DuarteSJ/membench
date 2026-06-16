@@ -256,9 +256,7 @@ static int run_corun(size_t region_mb, int core0, int chase_node, int scatter_no
 {
     region_t chreg, screg;
 
-    /* Allocation order = first-touch order, which decides who grabs the fast
-     * tier when DRAM is capped (pages go DRAM-first until the cap, then spill).
-     * `scatter_first` lets the late-touched region start in the slow tier. */
+    /* Allocation order */
     if (scatter_first) {
         if (setup_region(&screg, scatter_chunk, region_mb, scatter_node, seed) != 0)
             return 1;
