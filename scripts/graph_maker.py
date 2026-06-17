@@ -99,8 +99,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("-L", "--region", type=int, default=2048, help="region MB per workload")
-    p.add_argument("-N", "--chase", type=float, default=0.9, help="chase passes (fractional ok)")
-    p.add_argument("-M", "--scatter", type=float, default=1.5146, help="scatter passes (fractional ok)")
+    p.add_argument("-N", "--chase", type=float, default=2, help="chase passes (fractional ok)")
+    p.add_argument("-M", "--scatter", type=float, default=13, help="scatter passes (fractional ok)")
     p.add_argument("-x", "--mult", type=float, default=1.0,
                    help="scale both -N and -M by this (keeps their ratio; longer runs)")
     p.add_argument("-D", "--delay", type=int, default=8000, help="scatter think-time")
