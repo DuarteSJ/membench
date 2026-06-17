@@ -10,14 +10,23 @@ LDLIBS  := -lpthread -lnuma
 
 OBJS := main.o workloads.o
 BIN  := membench
+# htmm_ctl starts/stops the MEMTIS sampler (ksamplingd) via the htmm syscalls;
+# the managed-corun harness needs it since enabling the cgroup alone does not
+# start sampling. Standalone, no libnuma/pthread.
+HELPER := htmm_ctl
+
+all: $(BIN) $(HELPER)
 
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
+
+$(HELPER): $(HELPER).c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 %.o: %.c membench.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(BIN)
+	rm -f $(OBJS) $(BIN) $(HELPER)
 
-.PHONY: clean
+.PHONY: all clean

@@ -28,6 +28,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${BIN:-$HERE/src/membench}"
+HTMM_CTL="${HTMM_CTL:-$HERE/src/htmm_ctl}"   # starts/stops the ksamplingd sampler
 CG_DIR=/sys/fs/cgroup
 CG_NAME=htmm
 CG="$CG_DIR/$CG_NAME"
@@ -61,6 +62,9 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
 fi
 if [[ ! -x "$BIN" ]]; then
     echo "membench not built at $BIN (run 'make -C $HERE/src')" >&2; exit 1
+fi
+if [[ ! -x "$HTMM_CTL" ]]; then
+    echo "htmm_ctl not built at $HTMM_CTL (run 'make -C $HERE/src')" >&2; exit 1
 fi
 if [[ ! -d /sys/kernel/mm/htmm ]]; then
     echo "/sys/kernel/mm/htmm missing - not on the htmm/AOL kernel?" >&2; exit 1
@@ -104,6 +108,7 @@ cg_setup() {
 }
 
 cg_teardown() {
+    "$HTMM_CTL" stop 2>/dev/null || true       # stop ksamplingd (htmm_end)
     echo disabled > "$CG/memory.htmm_enabled" 2>/dev/null || true
 }
 trap cg_teardown EXIT
@@ -125,6 +130,9 @@ grep -e htmm -e pgmig /proc/vmstat > /tmp/managed_corun.vmstat.before 2>/dev/nul
 # Put THIS shell in the cgroup; the membench child inherits it. Regions unbound
 # so MEMTIS owns placement.
 echo $$ > "$CG/cgroup.procs"
+
+# Start the PEBS sampler (ksamplingd)
+"$HTMM_CTL" start || { echo "htmm_ctl start failed" >&2; exit 1; }
 
 "$BIN" -m corun -L "$REGION_MB" -A -1 -B -1 \
        -N "$CHASE_PASSES" -M "$SCATTER_PASSES" -D "$DELAY" -c "$CORE0" \
