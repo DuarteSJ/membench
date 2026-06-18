@@ -9,7 +9,7 @@
 # run.
 #
 # Counters (raw encodings mirror linux/include/linux/htmm.h):
-#   A1   cpu/0xb1,0x01,cmask=1/  OFFCORE_REQUESTS_OUTSTANDING cycles w/ >=1 pending demand read
+#   A1   cpu/0x60,0x01,cmask=1/  OFFCORE_REQUESTS_OUTSTANDING cycles w/ >=1 pending demand read
 #   A3   cpu/0xb0,0x01/          OFFCORE_REQUESTS demand data reads (count)
 #   llc  cpu/0xd1,0x20/          MEM_LOAD_RETIRED.L3_MISS (proxy for what MEMTIS samples)
 #   sllc cpu/0xa3,0x06,cmask=6/  CYCLE_ACTIVITY.STALLS_L3_MISS (cycles stalled on L3 miss)
@@ -48,7 +48,7 @@ if [[ ! -x "$BIN" ]]; then
     exit 1
 fi
 
-EVENTS="cpu/event=0xb1,umask=0x01,cmask=0x01/,cpu/event=0xb0,umask=0x01/,cpu/event=0xd1,umask=0x20/,cpu/event=0xa3,umask=0x06,cmask=0x06/,cycles"
+EVENTS="cpu/event=0x60,umask=0x01,cmask=0x01/,cpu/event=0xb0,umask=0x01/,cpu/event=0xd1,umask=0x20/,cpu/event=0xa3,umask=0x06,cmask=0x06/,cycles"
 
 # perf -x, CSV columns: value,unit,event,runtime,pct,...  ; we key by event name.
 field() { # $1=csvfile $2=event-substring
@@ -91,7 +91,7 @@ for pat in $PATTERNS; do
     fi
     ACC[$pat]="$acc"
 
-    a1="$(field "$perf_csv" 'event=0xb1,umask=0x01,cmask=0x01')"
+    a1="$(field "$perf_csv" 'event=0x60,umask=0x01,cmask=0x01')"
     a3="$(field "$perf_csv" 'event=0xb0,umask=0x01')"
     llc="$(field "$perf_csv" 'event=0xd1,umask=0x20')"
     sllc="$(field "$perf_csv" 'event=0xa3,umask=0x06,cmask=0x06')"
