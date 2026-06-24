@@ -44,7 +44,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCH="${BENCH:-$HERE/soar-microbench/src/bench}"
 FAST="${FAST:-0}"
 SLOW="${SLOW:-2}"
-DUR="${DUR:-15}"
+DUR="${DUR:-35}"
 BUF="${BUF:-2048}"
 OUT="${OUT:-$HERE/results/$(hostname)-calibrate.csv}"
 
